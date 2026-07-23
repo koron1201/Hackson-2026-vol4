@@ -1,2 +1,8 @@
 .codex/
 .agents/
+AGENTS.md
+Frontend/node_modules/
+Frontend/dist/
+Frontend/coverage/
+Frontend/.env.local
+Frontend/.env.*.local
