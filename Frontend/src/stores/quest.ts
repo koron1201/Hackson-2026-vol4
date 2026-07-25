@@ -1,5 +1,11 @@
 import { defineStore } from 'pinia'
 import { calculateProgress, estimateBattleDamage, forecastDay } from '@/domain/quest'
+import {
+  apiClient,
+  isBackendConfigured,
+  type BackendTask,
+  type TaskAnalysisResponse,
+} from '@/services/apiClient'
 import type { DailyPlan, GameState, InventoryItem, PlaceType, QuestTask } from '@/domain/types'
 
 interface BattleResult {
@@ -8,6 +14,7 @@ interface BattleResult {
 }
 
 interface QuestState {
+  backendEnabled: boolean
   userName: string
   isAuthenticated: boolean
   onboardingCompleted: boolean
@@ -95,7 +102,37 @@ const demoInventory: InventoryItem[] = [
 ]
 
 function initialState(): QuestState {
+  if (isBackendConfigured) {
+    return {
+      backendEnabled: true,
+      userName: 'Hero',
+      isAuthenticated: false,
+      onboardingCompleted: true,
+      isOffline: false,
+      phaseOverride: null,
+      plan: {
+        localDate: new Date().toISOString().slice(0, 10),
+        wakeTime: '07:00',
+        sleepTime: '23:30',
+        version: 1,
+        tasks: [],
+      },
+      game: {
+        level: 1,
+        coins: 0,
+        streakDays: 0,
+        enemyName: '未接続',
+        enemyHp: 0,
+        enemyMaxHp: 1,
+        inventory: [],
+      },
+      processedBattles: {},
+      toast: '',
+    }
+  }
+
   return {
+    backendEnabled: false,
     userName: 'ゆうき',
     isAuthenticated: true,
     onboardingCompleted: true,
@@ -110,7 +147,7 @@ function initialState(): QuestState {
     },
     game: {
       level: 12,
-      xp: 1240,
+      coins: 1240,
       streakDays: 7,
       enemyName: '洞窟のゴブリン',
       enemyHp: 380,
@@ -119,6 +156,93 @@ function initialState(): QuestState {
     },
     processedBattles: {},
     toast: '',
+  }
+}
+
+function persistenceKey(backendEnabled: boolean): string {
+  return backendEnabled ? 'morningquest-backend' : 'morningquest-demo'
+}
+
+function placeToBackendQr(place: PlaceType): string | null {
+  const qrCodes: Record<PlaceType, string | null> = {
+    WASHROOM: 'WASHROOM',
+    PC: 'DESK',
+    ENTRANCE: 'ENTRANCE',
+    NONE: null,
+  }
+  return qrCodes[place]
+}
+
+function backendQrToPlace(value: unknown): PlaceType {
+  if (typeof value !== 'string') return 'NONE'
+  const qrCode = value.trim().toUpperCase()
+  if (qrCode === 'WASHROOM') return 'WASHROOM'
+  if (qrCode === 'DESK' || qrCode === 'PC') return 'PC'
+  if (qrCode === 'ENTRANCE') return 'ENTRANCE'
+  return 'NONE'
+}
+
+function normalizeCategory(value: unknown): QuestTask['category'] {
+  if (typeof value !== 'string') return 'OTHER'
+  const category = value.trim().toUpperCase()
+  if (category === 'HYGIENE' || category === '衛生' || category === '習慣') return 'HYGIENE'
+  if (category === 'MEAL' || category === '食事') return 'MEAL'
+  if (category === 'PC_WORK' || category === 'PC' || category === '仕事') return 'PC_WORK'
+  if (category === 'OUTING' || category === '外出') return 'OUTING'
+  if (category === 'EXERCISE' || category === '運動') return 'EXERCISE'
+  return 'OTHER'
+}
+
+function weightForMinutes(minutes: number): number {
+  if (minutes <= 15) return 1
+  if (minutes <= 30) return 2
+  if (minutes <= 60) return 3
+  return 4
+}
+
+function safeAnalysis(analysis: TaskAnalysisResponse | null, selectedPlace: PlaceType) {
+  const estimatedMinutes =
+    typeof analysis?.estimated_minutes === 'number' &&
+    Number.isInteger(analysis.estimated_minutes) &&
+    analysis.estimated_minutes >= 1 &&
+    analysis.estimated_minutes <= 1440
+      ? analysis.estimated_minutes
+      : selectedPlace === 'PC'
+        ? 45
+        : 20
+  const suggestedPlace = backendQrToPlace(analysis?.recommended_qr)
+  const requiredPlace = selectedPlace === 'NONE' ? suggestedPlace : selectedPlace
+
+  return {
+    category: normalizeCategory(analysis?.category),
+    estimatedMinutes,
+    requiredPlace,
+  }
+}
+
+function backendTaskToQuestTask(task: BackendTask): QuestTask {
+  if (
+    !Number.isInteger(task.id) ||
+    task.id <= 0 ||
+    typeof task.title !== 'string' ||
+    task.title.trim().length === 0 ||
+    !Number.isInteger(task.estimated_minutes) ||
+    task.estimated_minutes < 1 ||
+    task.estimated_minutes > 1440
+  ) {
+    throw new Error('バックエンドから不正なタスクを受信しました。')
+  }
+
+  return {
+    id: String(task.id),
+    title: task.title.trim().slice(0, 120),
+    taskType: 'DAILY',
+    category: normalizeCategory(task.category),
+    status: task.is_completed ? 'DONE' : 'TODO',
+    estimatedMinutes: task.estimated_minutes,
+    weight: weightForMinutes(task.estimated_minutes),
+    requiredPlace: backendQrToPlace(task.recommended_qr),
+    scheduledWindow: 'DAYTIME',
   }
 }
 
@@ -135,6 +259,23 @@ export const useQuestStore = defineStore('quest', {
       null,
   },
   actions: {
+    async connectBackend(): Promise<boolean> {
+      if (!this.backendEnabled) {
+        this.setAuthenticated(true)
+        return true
+      }
+      try {
+        await apiClient.health()
+        this.isAuthenticated = true
+        this.toast = 'バックエンドへ接続しました'
+        this.persist()
+        return true
+      } catch {
+        this.isAuthenticated = false
+        this.toast = 'バックエンドへ接続できません。起動状態と接続先を確認してください'
+        return false
+      }
+    },
     startTask(taskId: string): boolean {
       const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'TODO') return false
@@ -153,22 +294,75 @@ export const useQuestStore = defineStore('quest', {
       this.persist()
       return true
     },
-    completeTask(taskId: string): boolean {
+    async completeTask(taskId: string): Promise<boolean> {
       const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'STARTED') return false
+
+      if (this.backendEnabled) {
+        const backendTaskId = Number(task.id)
+        if (!Number.isSafeInteger(backendTaskId) || backendTaskId <= 0) {
+          this.toast = 'このタスクはバックエンドと同期できません'
+          return false
+        }
+        try {
+          const result = await apiClient.completeTask(backendTaskId)
+          if (
+            !Number.isSafeInteger(result.total_coins) ||
+            result.total_coins < 0 ||
+            !Number.isSafeInteger(result.earned_coins) ||
+            result.earned_coins < 0
+          ) {
+            throw new Error('Invalid completion response')
+          }
+          task.status = 'DONE'
+          this.game.coins = result.total_coins
+          this.toast = `${task.title}を達成！ ${result.earned_coins}コイン獲得`
+          this.persist()
+          return true
+        } catch {
+          this.toast = '通信に失敗したため、タスクは完了にしていません'
+          return false
+        }
+      }
 
       task.status = 'DONE'
       const reward = this.game.inventory.find((item) => item.sourceTaskId === taskId)
       if (reward) reward.state = 'AVAILABLE'
-      this.game.xp += task.weight * 20
+      this.game.coins += task.weight * 20
       this.toast = `${task.title}を達成！ アイテムを獲得しました`
       this.persist()
       return true
     },
-    addTask(title: string, requiredPlace: PlaceType = 'NONE'): QuestTask {
+    async addTask(title: string, requiredPlace: PlaceType = 'NONE'): Promise<QuestTask> {
+      const normalizedTitle = title.trim().slice(0, 120)
+      if (!normalizedTitle) throw new Error('タスク名を入力してください。')
+
+      if (this.backendEnabled) {
+        let analysis: TaskAnalysisResponse | null = null
+        try {
+          analysis = await apiClient.analyzeTask(normalizedTitle)
+        } catch {
+          // AI分析に失敗しても決定論的な既定値でタスク作成は継続する。
+        }
+        const normalized = safeAnalysis(analysis, requiredPlace)
+        const created = await apiClient.createTask({
+          user_id: 1,
+          title: normalizedTitle,
+          category: normalized.category,
+          estimated_minutes: normalized.estimatedMinutes,
+          is_completed: false,
+          recommended_qr: placeToBackendQr(normalized.requiredPlace),
+        })
+        const task = backendTaskToQuestTask(created)
+        this.plan.tasks.push(task)
+        this.toast = `${task.title}をバックエンドへ登録しました`
+        this.persist()
+        return task
+      }
+
       const task: QuestTask = {
         id: crypto.randomUUID(),
-        title: title.trim(),
+        title: normalizedTitle,
         taskType: 'DAILY',
         category: requiredPlace === 'PC' ? 'PC_WORK' : 'OTHER',
         status: 'TODO',
@@ -180,6 +374,30 @@ export const useQuestStore = defineStore('quest', {
       this.plan.tasks.push(task)
       this.persist()
       return task
+    },
+    async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
+      const task = this.plan.tasks.find((item) => item.id === taskId)
+      if (!task || task.status !== 'TODO') return false
+
+      if (!this.backendEnabled) {
+        if (!rawQrCode.startsWith('mq1_') && rawQrCode !== 'demo') return false
+        return this.startTask(taskId)
+      }
+
+      const targetQrCode = placeToBackendQr(task.requiredPlace)
+      if (!targetQrCode) return this.startTask(taskId)
+
+      try {
+        const result = await apiClient.verifyQr(rawQrCode, targetQrCode)
+        if (result.success !== true) {
+          this.toast = 'QRコードが一致しません'
+          return false
+        }
+        return this.startTask(taskId)
+      } catch {
+        this.toast = 'QRコードを確認できません。通信状態を確認してください'
+        return false
+      }
     },
     removeTask(taskId: string): void {
       const task = this.plan.tasks.find((item) => item.id === taskId)
@@ -234,7 +452,8 @@ export const useQuestStore = defineStore('quest', {
       this.toast = ''
     },
     hydrate(): void {
-      const raw = localStorage.getItem('morningquest-demo')
+      const key = persistenceKey(this.backendEnabled)
+      const raw = localStorage.getItem(key)
       if (!raw) return
       try {
         const saved = JSON.parse(raw) as Partial<QuestState>
@@ -246,12 +465,13 @@ export const useQuestStore = defineStore('quest', {
           })
         }
       } catch {
-        localStorage.removeItem('morningquest-demo')
+        localStorage.removeItem(key)
       }
     },
     persist(): void {
+      const key = persistenceKey(this.backendEnabled)
       localStorage.setItem(
-        'morningquest-demo',
+        key,
         JSON.stringify({
           userName: this.userName,
           isAuthenticated: this.isAuthenticated,
@@ -264,8 +484,9 @@ export const useQuestStore = defineStore('quest', {
       )
     },
     resetDemo(): void {
+      const key = persistenceKey(this.backendEnabled)
       this.$reset()
-      localStorage.removeItem('morningquest-demo')
+      localStorage.removeItem(key)
     },
   },
 })

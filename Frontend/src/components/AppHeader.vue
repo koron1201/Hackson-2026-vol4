@@ -15,7 +15,7 @@ const store = useQuestStore()
     <div class="app-header__actions">
       <span class="sync-state" :class="{ 'sync-state--offline': store.isOffline }">
         <span aria-hidden="true">{{ store.isOffline ? '●' : '●' }}</span>
-        {{ store.isOffline ? 'オフライン' : '同期済み' }}
+        {{ store.isOffline ? 'オフライン' : store.backendEnabled ? 'API接続' : 'ローカル' }}
       </span>
       <RouterLink
         v-if="route.path !== '/settings'"

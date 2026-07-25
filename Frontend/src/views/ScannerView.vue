@@ -58,8 +58,9 @@ async function verify(rawToken: string) {
   if (!task.value || scannedOnce.value) return
   scannedOnce.value = true
 
-  // 生のQR値はログ・ストレージへ保存しない。
-  if (!rawToken.startsWith('mq1_') && rawToken !== 'demo') {
+  // 生のQR値はログ・ストレージへ保存しない。APIモードでは照合時だけ送信する。
+  const verified = await store.verifyQrForTask(rawToken, task.value.id)
+  if (!verified) {
     scannedOnce.value = false
     errorMessage.value = `${placeLabel.value}のQRではありません。`
     navigator.vibrate?.([100, 60, 100])
@@ -68,7 +69,6 @@ async function verify(rawToken: string) {
 
   controls?.stop()
   status.value = 'success'
-  store.startTask(task.value.id)
   navigator.vibrate?.(120)
   window.setTimeout(() => void router.replace('/tasks'), 1200)
 }
@@ -87,7 +87,7 @@ onBeforeUnmount(() => controls?.stop())
     <header class="immersive-header">
       <button class="icon-button icon-button--glass" type="button" aria-label="戻る" @click="cancel">←</button>
       <strong>QRをスキャン</strong>
-      <span class="secure-camera">端末内処理</span>
+      <span class="secure-camera">{{ store.backendEnabled ? 'サーバー照合' : '端末内処理' }}</span>
     </header>
 
     <section class="scanner-copy">
@@ -112,13 +112,20 @@ onBeforeUnmount(() => controls?.stop())
 
     <p v-if="errorMessage" class="scanner-error" role="alert">{{ errorMessage }}</p>
     <div class="scanner-actions">
-      <button class="button button--wide button--light" type="button" @click="verify('demo')">
+      <button
+        v-if="!store.backendEnabled"
+        class="button button--wide button--light"
+        type="button"
+        @click="verify('demo')"
+      >
         デモ用QRで続ける
       </button>
       <button v-if="status === 'error'" class="text-button text-button--light" type="button" @click="startCamera">
         カメラをもう一度試す
       </button>
     </div>
-    <p class="camera-privacy">カメラ映像は端末の外へ送信・保存されません。</p>
+    <p class="camera-privacy">
+      カメラ映像は送信・保存しません。APIモードでは読み取ったQR文字列だけを照合用に送信します。
+    </p>
   </div>
 </template>

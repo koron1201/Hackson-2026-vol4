@@ -159,7 +159,18 @@ function openNextTask() {
         </div>
       </section>
 
-      <section class="battle-teaser">
+      <section v-if="store.backendEnabled" class="card next-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">BACKEND REWARD</p>
+            <h2>獲得コイン</h2>
+          </div>
+          <strong>{{ store.game.coins }}</strong>
+        </div>
+        <p>タスク完了時にバックエンドから返された合計コインです。</p>
+      </section>
+
+      <section v-else class="battle-teaser">
         <div class="battle-teaser__enemy" aria-hidden="true">🧌</div>
         <div class="battle-teaser__body">
           <p class="eyebrow">TONIGHT'S BATTLE</p>

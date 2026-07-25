@@ -28,6 +28,10 @@ function handleStart(taskId: string) {
   if (task.requiredPlace === 'NONE') store.startTask(taskId)
   else void router.push({ path: '/scanner', query: { taskId } })
 }
+
+function handleComplete(taskId: string) {
+  void store.completeTask(taskId)
+}
 </script>
 
 <template>
@@ -74,7 +78,7 @@ function handleStart(taskId: string) {
         :key="task.id"
         :task="task"
         @start="handleStart"
-        @complete="store.completeTask"
+        @complete="handleComplete"
       />
       <div v-if="filteredTasks.length === 0" class="empty-state">
         <span aria-hidden="true">✦</span>

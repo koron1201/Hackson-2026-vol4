@@ -21,18 +21,18 @@ describe('quest store', () => {
     expect(store.game.inventory.filter((item) => item.sourceTaskId === task!.id)).toHaveLength(1)
   })
 
-  it('着手済みタスクの完了でアイテムを利用可能にしXPを付与する', () => {
+  it('着手済みタスクの完了でアイテムを利用可能にしコインを付与する', async () => {
     const store = useQuestStore()
     const task = store.tasks.find((item) => item.status === 'TODO')!
-    const initialXp = store.game.xp
+    const initialCoins = store.game.coins
     store.startTask(task.id)
 
-    expect(store.completeTask(task.id)).toBe(true)
-    expect(store.completeTask(task.id)).toBe(false)
+    await expect(store.completeTask(task.id)).resolves.toBe(true)
+    await expect(store.completeTask(task.id)).resolves.toBe(false)
     expect(store.game.inventory.find((item) => item.sourceTaskId === task.id)?.state).toBe(
       'AVAILABLE',
     )
-    expect(store.game.xp).toBe(initialXp + task.weight * 20)
+    expect(store.game.coins).toBe(initialCoins + task.weight * 20)
   })
 
   it('攻撃は選択アイテムを消費し、同じイベントIDを二重適用しない', () => {
@@ -67,17 +67,17 @@ describe('quest store', () => {
     expect(store.startTask('habit-breakfast')).toBe(false)
   })
 
-  it('未着手や存在しないタスクは完了しない', () => {
+  it('未着手や存在しないタスクは完了しない', async () => {
     const store = useQuestStore()
 
-    expect(store.completeTask('daily-report')).toBe(false)
-    expect(store.completeTask('missing')).toBe(false)
+    await expect(store.completeTask('daily-report')).resolves.toBe(false)
+    await expect(store.completeTask('missing')).resolves.toBe(false)
   })
 
-  it('PCタスクと通常タスクを追加できる', () => {
+  it('PCタスクと通常タスクを追加できる', async () => {
     const store = useQuestStore()
-    const pcTask = store.addTask('  資料を作る  ', 'PC')
-    const normalTask = store.addTask('水を飲む')
+    const pcTask = await store.addTask('  資料を作る  ', 'PC')
+    const normalTask = await store.addTask('水を飲む')
 
     expect(pcTask).toMatchObject({
       title: '資料を作る',
