@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { QuestTask } from '../domain/types'
 import { useRouter } from 'vue-router'
 import TaskCard from '@/components/TaskCard.vue'
 import { useQuestStore } from '@/stores/quest'
-import type { TaskStatus } from '@/domain/types'
+import type { TaskStatus } from '../domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
@@ -19,14 +20,18 @@ const filters: { value: 'ALL' | TaskStatus; label: string }[] = [
 const filteredTasks = computed(() =>
   filter.value === 'ALL'
     ? store.tasks
-    : store.tasks.filter((task) => task.status === filter.value),
+    : store.tasks.filter((task: QuestTask) => task.status === filter.value),
 )
 
-function handleStart(taskId: string) {
-  const task = store.tasks.find((item) => item.id === taskId)
+async function handleStart(taskId: string) {
+  const task = store.tasks.find((item: QuestTask) => item.id === taskId)
   if (!task) return
-  if (task.requiredPlace === 'NONE') store.startTask(taskId)
+  if (task.requiredPlace === 'NONE') await store.startTask(taskId)
   else void router.push({ path: '/scanner', query: { taskId } })
+}
+
+async function handleComplete(taskId: string) {
+  await store.completeTask(taskId)
 }
 </script>
 
@@ -69,12 +74,12 @@ function handleStart(taskId: string) {
     </div>
 
     <section class="task-list" aria-live="polite">
-      <TaskCard
+        <TaskCard
         v-for="task in filteredTasks"
         :key="task.id"
         :task="task"
         @start="handleStart"
-        @complete="store.completeTask"
+        @complete="handleComplete"
       />
       <div v-if="filteredTasks.length === 0" class="empty-state">
         <span aria-hidden="true">✦</span>

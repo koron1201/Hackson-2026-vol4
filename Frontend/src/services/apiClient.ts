@@ -1,4 +1,4 @@
-import type { DailyPlan, GameState, QuestTask } from '@/domain/types'
+import type { DailyPlan, GameState, QuestTask } from '../domain/types'
 
 interface ApiErrorBody {
   error?: {
@@ -65,10 +65,25 @@ export const apiClient = {
       method: 'PUT',
       body: JSON.stringify(plan),
     }),
-  updateTaskStatus: (taskId: string, status: QuestTask['status'], version: number) =>
+  updateTaskStatus: (
+    taskId: string,
+    status: QuestTask['status'],
+    version: number,
+    extras?: Record<string, unknown>,
+  ) =>
     request<QuestTask>(`/tasks/${taskId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, version, clientEventId: crypto.randomUUID() }),
+      body: JSON.stringify({ status, version, clientEventId: crypto.randomUUID(), ...(extras ?? {}) }),
+    }),
+  createTask: (task: Partial<QuestTask>) =>
+    request<QuestTask>('/tasks', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      body: JSON.stringify(task),
+    }),
+  deleteTask: (taskId: string) =>
+    request<void>(`/tasks/${taskId}`, {
+      method: 'DELETE',
     }),
   verifyScan: (rawToken: string, taskId: string, purpose: 'TASK_START' | 'ALARM_DISMISS') =>
     request<{ verified: boolean; task: QuestTask }>('/scans/verify', {

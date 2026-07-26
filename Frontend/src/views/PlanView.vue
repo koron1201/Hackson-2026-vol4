@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { validatePlanDraft } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
-import type { PlaceType } from '@/domain/types'
+import type { PlaceType } from '../domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
@@ -18,13 +18,13 @@ const totalMinutes = computed(() =>
   store.tasks.reduce((total, task) => total + task.estimatedMinutes, 0),
 )
 
-function addTask() {
+async function addTask() {
   const title = newTask.value.trim()
   if (!title) {
     errors.value = ['タスク名を入力してください']
     return
   }
-  store.addTask(title, newTaskPlace.value)
+  await store.addTask(title, newTaskPlace.value)
   newTask.value = ''
   newTaskPlace.value = 'NONE'
   errors.value = []
@@ -35,16 +35,22 @@ function suggestWithRules() {
   errors.value = []
 }
 
-function save() {
+async function save() {
   errors.value = validatePlanDraft({
     wakeTime: wakeTime.value,
     sleepTime: sleepTime.value,
     taskTitles: store.tasks.map((task) => task.title),
   })
   if (errors.value.length > 0) return
-
-  store.savePlan(wakeTime.value, sleepTime.value)
+  await store.savePlan(wakeTime.value, sleepTime.value)
   void router.push('/home')
+}
+
+async function removeTask(taskId: string) {
+  const task = store.tasks.find((t) => t.id === taskId)
+  const title = task?.title ?? 'このタスク'
+  if (!confirm(`${title} を削除してよいですか？`)) return
+  await store.removeTask(taskId)
 }
 </script>
 
@@ -102,13 +108,7 @@ function save() {
               </span>
               <small v-if="aiSuggested && task.taskType === 'DAILY'">AI候補 · 保存前に確認してください</small>
             </div>
-            <button
-              type="button"
-              class="icon-button"
-              :disabled="task.status === 'DONE'"
-              :aria-label="`${task.title}を削除`"
-              @click="store.removeTask(task.id)"
-            >
+            <button type="button" class="icon-button" :aria-label="`${task.title}を削除`" @click="removeTask(task.id)">
               ×
             </button>
           </div>

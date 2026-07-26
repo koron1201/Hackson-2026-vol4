@@ -2,28 +2,29 @@
 import { computed, ref } from 'vue'
 import { estimateBattleDamage } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
+import type { InventoryItem } from '../domain/types'
 
 const store = useQuestStore()
-const selectedIds = ref<string[]>(store.availableItems.map((item) => item.id))
+const selectedIds = ref<string[]>(store.availableItems.map((item: InventoryItem) => item.id))
 const lastDamage = ref<number | null>(null)
 const attacking = ref(false)
 
 const selectedItems = computed(() =>
-  store.availableItems.filter((item) => selectedIds.value.includes(item.id)),
+  store.availableItems.filter((item: InventoryItem) => selectedIds.value.includes(item.id)),
 )
 const estimatedDamage = computed(() =>
   estimateBattleDamage(
-    selectedItems.value.map((item) => item.power),
+    selectedItems.value.map((item: InventoryItem) => item.power),
     store.game.streakDays,
     store.progress.percentage,
   ),
 )
 const enemyPercentage = computed(() => (store.game.enemyHp / store.game.enemyMaxHp) * 100)
 
-function attack() {
+async function attack() {
   if (selectedIds.value.length === 0 || attacking.value) return
   attacking.value = true
-  const result = store.attack([...selectedIds.value], crypto.randomUUID())
+  const result = await store.attack([...selectedIds.value], crypto.randomUUID())
   lastDamage.value = result.damage
   selectedIds.value = []
   window.setTimeout(() => {
@@ -102,7 +103,7 @@ function attack() {
             <strong>{{ estimatedDamage }}</strong>
           </div>
           <dl>
-            <div><dt>基礎威力</dt><dd>{{ selectedItems.reduce((sum, item) => sum + item.power, 0) }}</dd></div>
+            <div><dt>基礎威力</dt><dd>{{ selectedItems.reduce((sum: number, item: InventoryItem) => sum + item.power, 0) }}</dd></div>
             <div><dt>連続{{ store.game.streakDays }}日</dt><dd>×1.25</dd></div>
             <div><dt>今日の達成</dt><dd>{{ store.progress.percentage }}%</dd></div>
           </dl>
