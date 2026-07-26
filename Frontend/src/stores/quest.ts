@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { calculateProgress, estimateBattleDamage, forecastDay } from '@/domain/quest'
-import type { DailyPlan, GameState, InventoryItem, PlaceType, QuestTask } from '@/domain/types'
+import { apiClient } from '@/services/apiClient'
+import type { DailyPlan, GameState, InventoryItem, PlaceType, QuestTask, TaskCategory } from '../domain/types'
 
 interface BattleResult {
   damage: number
@@ -94,6 +95,39 @@ const demoInventory: InventoryItem[] = [
   },
 ]
 
+const allowedCategories = ['HYGIENE', 'MEAL', 'PC_WORK', 'OUTING', 'EXERCISE', 'OTHER'] as const
+
+function parseServerTask(src: any, fallbackId = '0'): QuestTask {
+  const categoryRaw = src.category ?? src.cat ?? ''
+  // Accept allowed english tokens, otherwise fallback to OTHER
+  const category = (allowedCategories.includes(categoryRaw) ? (categoryRaw as TaskCategory) : 'OTHER') as TaskCategory
+
+  const estimatedMinutes = src.estimatedMinutes ?? src.estimated_minutes ?? 0
+  const requiredPlace = (src.requiredPlace ?? src.recommended_qr ?? 'NONE') as PlaceType
+
+  return {
+    id: String(src.id ?? src.task_id ?? fallbackId),
+    title: src.title ?? src.name ?? 'Untitled',
+    taskType: (src.taskType as QuestTask['taskType']) ?? 'DAILY',
+    category,
+    status: (src.status as QuestTask['status']) ?? 'TODO',
+    estimatedMinutes: Number(estimatedMinutes) || 0,
+    weight: src.weight ?? Math.max(1, Math.floor((Number(estimatedMinutes) || 20) / 20)),
+    requiredPlace: requiredPlace,
+    scheduledWindow: (src.scheduledWindow as QuestTask['scheduledWindow']) ?? 'ANY',
+  }
+}
+
+function normalizePlan(src: any) {
+  return {
+    localDate: src.localDate ?? src.date ?? new Date().toISOString().slice(0, 10),
+    wakeTime: src.wakeTime ?? src.wake_time ?? '07:00',
+    sleepTime: src.sleepTime ?? src.sleep_time ?? '23:30',
+    version: src.version ?? 1,
+    tasks: Array.isArray(src.tasks) ? src.tasks.map((t: any, i: number) => parseServerTask(t, String(i))) : [],
+  } as DailyPlan
+}
+
 function initialState(): QuestState {
   return {
     userName: 'ゆうき',
@@ -128,19 +162,23 @@ export const useQuestStore = defineStore('quest', {
     tasks: (state): QuestTask[] => state.plan.tasks,
     progress: (state) => calculateProgress(state.plan.tasks),
     forecast: (state) => forecastDay(state.plan.tasks, 180),
-    availableItems: (state) => state.game.inventory.filter((item) => item.state === 'AVAILABLE'),
+    availableItems: (state) => state.game.inventory.filter((item: InventoryItem) => item.state === 'AVAILABLE'),
     nextTask: (state) =>
       state.plan.tasks.find((task) => task.status === 'TODO') ??
       state.plan.tasks.find((task) => task.status === 'STARTED') ??
       null,
   },
   actions: {
-    startTask(taskId: string): boolean {
-      const task = this.plan.tasks.find((item) => item.id === taskId)
+    async startTask(taskId: string): Promise<boolean> {
+      const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
       if (!task || task.status !== 'TODO') return false
 
+      const prevStatus = task.status
+      const hadReward = this.game.inventory.some((item: InventoryItem) => item.sourceTaskId === taskId)
+
+      // optimistic update
       task.status = 'STARTED'
-      if (!this.game.inventory.some((item) => item.sourceTaskId === taskId)) {
+      if (!hadReward) {
         this.game.inventory.push({
           id: `reward-${taskId}`,
           type: task.weight >= 4 ? 'BLADE' : 'SPARK',
@@ -151,70 +189,192 @@ export const useQuestStore = defineStore('quest', {
       }
       this.toast = `${task.title}を開始しました`
       this.persist()
-      return true
+
+      try {
+        const serverTask = await apiClient.updateTaskStatus(taskId, 'STARTED', this.plan.version, task)
+        Object.assign(task, parseServerTask(serverTask, taskId))
+        this.plan.version += 1
+        return true
+      } catch (err) {
+        console.error('startTask failed', err)
+        // rollback
+        task.status = prevStatus
+        if (!hadReward) {
+          this.game.inventory = this.game.inventory.filter((i) => i.sourceTaskId !== taskId)
+        }
+        this.toast = err instanceof Error ? `サーバー同期に失敗しました: ${err.message}` : 'サーバー同期に失敗しました。オフライン時は後で再試行してください'
+        return false
+      }
     },
-    completeTask(taskId: string): boolean {
-      const task = this.plan.tasks.find((item) => item.id === taskId)
+    async completeTask(taskId: string): Promise<boolean> {
+      const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
       if (!task || task.status !== 'STARTED') return false
 
+      const prevStatus = task.status
+
+      // optimistic
       task.status = 'DONE'
-      const reward = this.game.inventory.find((item) => item.sourceTaskId === taskId)
+      const reward = this.game.inventory.find((item: InventoryItem) => item.sourceTaskId === taskId)
       if (reward) reward.state = 'AVAILABLE'
       this.game.xp += task.weight * 20
       this.toast = `${task.title}を達成！ アイテムを獲得しました`
       this.persist()
-      return true
+
+      try {
+        const serverTask = await apiClient.updateTaskStatus(taskId, 'DONE', this.plan.version, task)
+        Object.assign(task, parseServerTask(serverTask, taskId))
+        this.plan.version += 1
+        return true
+      } catch (err) {
+        console.error('completeTask failed', err)
+        // rollback
+        task.status = prevStatus
+        if (reward) reward.state = 'PENDING'
+        this.game.xp = Math.max(0, this.game.xp - task.weight * 20)
+        this.toast = err instanceof Error ? `サーバー同期に失敗しました: ${err.message}` : 'サーバー同期に失敗しました。オフライン時は後で再試行してください'
+        return false
+      }
     },
-    addTask(title: string, requiredPlace: PlaceType = 'NONE'): QuestTask {
-      const task: QuestTask = {
-        id: crypto.randomUUID(),
+    async addTask(title: string, requiredPlace: PlaceType = 'NONE'): Promise<QuestTask> {
+      const payload: {
+        title: string
+        category: TaskCategory
+        estimated_minutes: number
+        is_completed: boolean
+        recommended_qr: PlaceType | null
+      } = {
         title: title.trim(),
+        category: (requiredPlace === 'PC' ? 'PC_WORK' : 'OTHER') as TaskCategory,
+        estimated_minutes: requiredPlace === 'PC' ? 45 : 20,
+        is_completed: false,
+        recommended_qr: requiredPlace === 'NONE' ? null : requiredPlace,
+      }
+      // optimistic local task until server responds
+      const tempId = crypto.randomUUID()
+      const tempTask: QuestTask = {
+        id: tempId,
+        title: payload.title,
         taskType: 'DAILY',
-        category: requiredPlace === 'PC' ? 'PC_WORK' : 'OTHER',
+        category: payload.category,
         status: 'TODO',
-        estimatedMinutes: requiredPlace === 'PC' ? 45 : 20,
-        weight: requiredPlace === 'PC' ? 3 : 2,
-        requiredPlace,
+        estimatedMinutes: payload.estimated_minutes,
+        weight: payload.estimated_minutes >= 45 ? 3 : 2,
+        requiredPlace: requiredPlace,
         scheduledWindow: 'DAYTIME',
       }
-      this.plan.tasks.push(task)
+      this.plan.tasks.push(tempTask)
       this.persist()
-      return task
+
+      try {
+        const created = await apiClient.createTask({
+          title: tempTask.title,
+          category: tempTask.category,
+          estimated_minutes: tempTask.estimatedMinutes,
+          recommended_qr: tempTask.requiredPlace === 'NONE' ? null : tempTask.requiredPlace,
+        } as any)
+
+        // map server response to local shape if necessary
+        const allowedCategories = ['HYGIENE', 'MEAL', 'PC_WORK', 'OUTING', 'EXERCISE', 'OTHER'] as const
+        const serverCategory = allowedCategories.includes((created as any).category) ? ((created as any).category as TaskCategory) : tempTask.category
+
+        const serverTask: QuestTask = {
+          id: String((created as any).id ?? created.id),
+          title: created.title,
+          taskType: (created.taskType as QuestTask['taskType']) ?? 'DAILY',
+          category: serverCategory,
+          status: (created.status as QuestTask['status']) ?? 'TODO',
+          estimatedMinutes: (created as any).estimatedMinutes ?? (created as any).estimated_minutes ?? tempTask.estimatedMinutes,
+          weight: created.weight ?? tempTask.weight,
+          requiredPlace: (created as any).requiredPlace ?? (created as any).recommended_qr ?? tempTask.requiredPlace,
+          scheduledWindow: (created.scheduledWindow as QuestTask['scheduledWindow']) ?? tempTask.scheduledWindow,
+        }
+
+        // replace temp task
+        this.plan.tasks = this.plan.tasks.map((t) => (t.id === tempId ? serverTask : t))
+        this.plan.version += 1
+        this.persist()
+        return serverTask
+      } catch (err) {
+        console.error('addTask failed', err)
+        this.toast = 'タスク追加はローカルに保存されました（同期失敗）'
+        return tempTask
+      }
     },
-    removeTask(taskId: string): void {
-      const task = this.plan.tasks.find((item) => item.id === taskId)
-      if (!task || task.status === 'DONE') return
-      this.plan.tasks = this.plan.tasks.filter((item) => item.id !== taskId)
+    async removeTask(taskId: string): Promise<void> {
+      const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
+      if (!task) return
+
+      // optimistic remove
+      const prevTasks = [...this.plan.tasks]
+      this.plan.tasks = this.plan.tasks.filter((item: QuestTask) => item.id !== taskId)
       this.persist()
+
+      try {
+        await apiClient.deleteTask(taskId)
+          this.plan.version += 1
+          // ensure local persistence after successful delete
+          this.persist()
+      } catch (err) {
+        console.error('removeTask failed', err)
+        this.toast = 'タスク削除はローカルに保存されました（同期失敗）'
+        // rollback
+        this.plan.tasks = prevTasks
+          this.persist()
+      }
     },
-    savePlan(wakeTime: string, sleepTime: string): void {
+    async savePlan(wakeTime: string, sleepTime: string): Promise<void> {
       this.plan.wakeTime = wakeTime
       this.plan.sleepTime = sleepTime
-      this.plan.version += 1
-      this.toast = '明日の計画とWebアラームを保存しました'
-      this.persist()
+      // try to save to server
+      try {
+        const saved = await apiClient.savePlan({ ...this.plan, wakeTime, sleepTime })
+        this.$patch({ plan: normalizePlan(saved) })
+        this.toast = '明日の計画とWebアラームを保存しました'
+        // persist local copy even when server save succeeds
+        this.persist()
+      } catch {
+        console.error('savePlan failed')
+        this.plan.version += 1
+        this.toast = '保存に失敗しました。オフラインの場合はローカルに保存されます'
+        this.persist()
+      }
     },
-    attack(itemIds: string[], clientEventId: string): BattleResult {
+    async attack(itemIds: string[], clientEventId: string): Promise<BattleResult> {
       const existing = this.processedBattles[clientEventId]
       if (existing) return existing
 
-      const selected = this.game.inventory.filter(
-        (item) => itemIds.includes(item.id) && item.state === 'AVAILABLE',
-      )
-      const damage = estimateBattleDamage(
-        selected.map((item) => item.power),
-        this.game.streakDays,
-        this.progress.percentage,
-      )
-      selected.forEach((item) => {
-        item.state = 'CONSUMED'
-      })
-      this.game.enemyHp = Math.max(0, this.game.enemyHp - damage)
-      const result = { damage, enemyHp: this.game.enemyHp }
-      this.processedBattles[clientEventId] = result
-      this.toast = damage > 0 ? `${damage}ダメージ！` : 'アイテムを選んでください'
-      this.persist()
-      return result
+      try {
+        const res = await apiClient.battle(itemIds, clientEventId)
+        // mark consumed locally
+        this.game.inventory.forEach((item: InventoryItem) => {
+          if (itemIds.includes(item.id) && item.state === 'AVAILABLE') item.state = 'CONSUMED'
+        })
+        this.game.enemyHp = res.enemyHp
+        const result = { damage: res.damage, enemyHp: res.enemyHp }
+        this.processedBattles[clientEventId] = result
+        this.toast = res.damage > 0 ? `${res.damage}ダメージ！` : 'アイテムを選んでください'
+        this.persist()
+        return result
+      } catch {
+        // fallback to local calculation when offline
+        const selected = this.game.inventory.filter(
+          (item: InventoryItem) => itemIds.includes(item.id) && item.state === 'AVAILABLE',
+        )
+        const damage = estimateBattleDamage(
+          selected.map((item) => item.power),
+          this.game.streakDays,
+          this.progress.percentage,
+        )
+        selected.forEach((item) => {
+          item.state = 'CONSUMED'
+        })
+        this.game.enemyHp = Math.max(0, this.game.enemyHp - damage)
+        const result = { damage, enemyHp: this.game.enemyHp }
+        this.processedBattles[clientEventId] = result
+        this.toast = damage > 0 ? `${damage}ダメージ！` : 'アイテムを選んでください'
+        this.persist()
+        return result
+      }
     },
     setAuthenticated(authenticated: boolean): void {
       this.isAuthenticated = authenticated
@@ -233,7 +393,17 @@ export const useQuestStore = defineStore('quest', {
     clearToast(): void {
       this.toast = ''
     },
-    hydrate(): void {
+    async hydrate(): Promise<void> {
+      // try to load from server first
+      try {
+        const plan = await apiClient.getPlan(this.plan.localDate)
+        const game = await apiClient.getGameState()
+        this.$patch({ plan: normalizePlan(plan), game })
+        return
+      } catch {
+        // fallback to localStorage
+      }
+
       const raw = localStorage.getItem('morningquest-demo')
       if (!raw) return
       try {
@@ -264,7 +434,19 @@ export const useQuestStore = defineStore('quest', {
       )
     },
     resetDemo(): void {
-      this.$reset()
+      const init = initialState()
+      // Explicitly replace core slices to avoid leftover/demo placeholders
+      this.$patch({
+        userName: init.userName,
+        isAuthenticated: init.isAuthenticated,
+        onboardingCompleted: init.onboardingCompleted,
+        isOffline: init.isOffline,
+        phaseOverride: init.phaseOverride,
+        plan: init.plan,
+        game: init.game,
+        processedBattles: {},
+        toast: '',
+      })
       localStorage.removeItem('morningquest-demo')
     },
   },

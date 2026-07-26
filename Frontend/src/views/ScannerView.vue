@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { QuestTask } from '../domain/types'
 import { useRoute, useRouter } from 'vue-router'
 import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
 import { useQuestStore } from '@/stores/quest'
@@ -14,7 +15,7 @@ const scannedOnce = ref(false)
 let controls: IScannerControls | undefined
 
 const taskId = computed(() => String(route.query.taskId ?? ''))
-const task = computed(() => store.tasks.find((item) => item.id === taskId.value))
+const task = computed(() => store.tasks.find((item: QuestTask) => item.id === taskId.value))
 const placeLabel = computed(() => {
   const labels = { WASHROOM: '洗面所', PC: 'PC前', ENTRANCE: '玄関', NONE: '指定場所' }
   return task.value ? labels[task.value.requiredPlace] : '指定場所'
@@ -68,7 +69,7 @@ async function verify(rawToken: string) {
 
   controls?.stop()
   status.value = 'success'
-  store.startTask(task.value.id)
+  await store.startTask(task.value.id)
   navigator.vibrate?.(120)
   window.setTimeout(() => void router.replace('/tasks'), 1200)
 }

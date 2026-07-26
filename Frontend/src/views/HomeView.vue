@@ -36,13 +36,13 @@ const riskText = computed(() => {
   return labels[store.forecast.riskLevel]
 })
 
-function openNextTask() {
+async function openNextTask() {
   const task = store.nextTask
   if (!task) return
   if (task.status === 'STARTED') {
     void router.push('/tasks')
   } else if (task.requiredPlace === 'NONE') {
-    store.startTask(task.id)
+    await store.startTask(task.id)
   } else {
     void router.push({ path: '/scanner', query: { taskId: task.id } })
   }

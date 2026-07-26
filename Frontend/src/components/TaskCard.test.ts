@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import TaskCard from './TaskCard.vue'
-import type { QuestTask } from '@/domain/types'
+import type { QuestTask } from '../domain/types'
 
 const task: QuestTask = {
   id: 'task-1',

@@ -30,3 +30,18 @@ def complete_task(task_id: int, session: Session = Depends(get_session)):
         "earned_coins": 10,
         "total_coins": user.coins
     }
+
+
+@router.get('/state')
+def get_game_state(session: Session = Depends(get_session)):
+    # Return a simple game state based on DB
+    # For demo, return fixed values and inventory empty
+    return {
+        'level': 12,
+        'xp': 1240,
+        'streakDays': 7,
+        'enemyName': '洞窟のゴブリン',
+        'enemyHp': 380,
+        'enemyMaxHp': 700,
+        'inventory': [],
+    }
