@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ProgressRing from '@/components/ProgressRing.vue'
+import { formatMinutes, minutesUntilClock } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
 
 const store = useQuestStore()
 const router = useRouter()
+const now = ref(new Date())
+let timerId: number | undefined
 
 const phase = computed(() => {
   if (store.phaseOverride) return store.phaseOverride
@@ -34,6 +37,21 @@ const riskText = computed(() => {
     HIGH: '予定を見直そう',
   }
   return labels[store.forecast.riskLevel]
+})
+
+const bedtimeCountdown = computed(() => {
+  const remainingMinutes = minutesUntilClock(store.plan.sleepTime, now.value)
+  return remainingMinutes > 0 ? `就寝まであと${formatMinutes(remainingMinutes)}` : '就寝時刻です'
+})
+
+onMounted(() => {
+  timerId = window.setInterval(() => {
+    now.value = new Date()
+  }, 60_000)
+})
+
+onBeforeUnmount(() => {
+  if (timerId) window.clearInterval(timerId)
 })
 
 async function openNextTask() {
@@ -149,7 +167,7 @@ async function openNextTask() {
         <div>
           <p class="eyebrow">SLEEP FORECAST</p>
           <h2>就寝見込み</h2>
-          <strong>23:45 ごろ</strong>
+          <strong>{{ bedtimeCountdown }}</strong>
           <span class="risk-badge" :data-risk="store.forecast.riskLevel">{{ riskText }}</span>
           <p>残り{{ store.forecast.remainingMinutes }}分 / 使える{{ store.forecast.effectiveAvailableMinutes }}分</p>
         </div>

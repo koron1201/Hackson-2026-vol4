@@ -20,7 +20,7 @@ def get_plan(local_date: str, session: Session = Depends(get_session)):
                 "title": t.title,
                 "taskType": "DAILY",
                 "category": t.category,
-                "status": "DONE" if t.is_completed else "TODO",
+                "status": t.status if t.status in {"TODO", "STARTED", "DONE"} else ("DONE" if t.is_completed else "TODO"),
                 "estimated_minutes": t.estimated_minutes,
                 "recommended_qr": t.recommended_qr,
             }

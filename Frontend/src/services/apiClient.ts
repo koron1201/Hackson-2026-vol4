@@ -53,9 +53,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const apiClient = {
   login: (email: string, password: string) =>
-    request<{ accessToken: string }>('/auth/login', {
+    request<{ accessToken: string; user: { id: number; name: string; email: string | null } }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+  register: (name: string, email: string, password: string) =>
+    request<{ accessToken: string; user: { id: number; name: string; email: string | null } }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
     }),
   getHome: (localDate: string) =>
     request<{ phase: string; tasks: QuestTask[] }>(`/home?localDate=${localDate}`),

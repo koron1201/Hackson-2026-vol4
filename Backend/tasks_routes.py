@@ -22,8 +22,25 @@ def update_task_status(task_id: str, payload: dict, session: Session = Depends(g
 
     if db_task:
         status = payload.get('status')
+        # Persist task progress so reloads keep STARTED/DONE.
+        if status == 'STARTED':
+            db_task.status = 'STARTED'
+            db_task.is_completed = False
+            session.add(db_task)
+            session.commit()
+            session.refresh(db_task)
+            return {
+                'id': db_task.id,
+                'title': db_task.title,
+                'category': db_task.category,
+                'status': 'STARTED',
+                'estimated_minutes': db_task.estimated_minutes,
+                'recommended_qr': db_task.recommended_qr,
+            }
+
         # If client marks DONE, persist completion
         if status == 'DONE':
+            db_task.status = 'DONE'
             db_task.is_completed = True
             session.add(db_task)
             session.commit()
@@ -37,23 +54,12 @@ def update_task_status(task_id: str, payload: dict, session: Session = Depends(g
                 'recommended_qr': db_task.recommended_qr,
             }
 
-        # For STARTED, we don't change DB but echo STARTED so frontend keeps optimistic state
-        if status == 'STARTED':
-            return {
-                'id': db_task.id,
-                'title': db_task.title,
-                'category': db_task.category,
-                'status': 'STARTED',
-                'estimated_minutes': db_task.estimated_minutes,
-                'recommended_qr': db_task.recommended_qr,
-            }
-
         # default: return current persisted status
         return {
             'id': db_task.id,
             'title': db_task.title,
             'category': db_task.category,
-            'status': 'DONE' if db_task.is_completed else 'TODO',
+            'status': db_task.status if db_task.status in {'TODO', 'STARTED', 'DONE'} else ('DONE' if db_task.is_completed else 'TODO'),
             'estimated_minutes': db_task.estimated_minutes,
             'recommended_qr': db_task.recommended_qr,
         }
@@ -106,6 +112,7 @@ def create_task(task: TaskCreate, session: Session = Depends(get_session)):
         user_id=task.user_id,
         title=task.title,
         category=task.category,
+        status='TODO',
         estimated_minutes=task.estimated_minutes,
         is_completed=task.is_completed,
         recommended_qr=task.recommended_qr,
