@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { calculateProgress, estimateBattleDamage, forecastDay } from '@/domain/quest'
+import { calculateProgress, estimateBattleDamage, forecastDay, minutesUntilClock } from '@/domain/quest'
 import { apiClient } from '@/services/apiClient'
 import type { DailyPlan, GameState, InventoryItem, PlaceType, QuestTask, TaskCategory } from '../domain/types'
 
@@ -14,11 +14,14 @@ interface QuestState {
   onboardingCompleted: boolean
   isOffline: boolean
   phaseOverride: 'night' | 'morning' | 'daytime' | null
+  clockTick: number
   plan: DailyPlan
   game: GameState
   processedBattles: Record<string, BattleResult>
   toast: string
 }
+
+let clockTimer: number | null = null
 
 const demoTasks: QuestTask[] = [
   {
@@ -135,6 +138,7 @@ function initialState(): QuestState {
     onboardingCompleted: true,
     isOffline: false,
     phaseOverride: null,
+    clockTick: Date.now(),
     plan: {
       localDate: new Date().toISOString().slice(0, 10),
       wakeTime: '07:00',
@@ -161,7 +165,7 @@ export const useQuestStore = defineStore('quest', {
   getters: {
     tasks: (state): QuestTask[] => state.plan.tasks,
     progress: (state) => calculateProgress(state.plan.tasks),
-    forecast: (state) => forecastDay(state.plan.tasks, 180),
+    forecast: (state) => forecastDay(state.plan.tasks, minutesUntilClock(state.plan.sleepTime, new Date(state.clockTick))),
     availableItems: (state) => state.game.inventory.filter((item: InventoryItem) => item.state === 'AVAILABLE'),
     nextTask: (state) =>
       state.plan.tasks.find((task) => task.status === 'TODO') ??
@@ -169,6 +173,10 @@ export const useQuestStore = defineStore('quest', {
       null,
   },
   actions: {
+    setUserName(userName: string): void {
+      this.userName = userName.trim() || this.userName
+      this.persist()
+    },
     async startTask(taskId: string): Promise<boolean> {
       const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
       if (!task || task.status !== 'TODO') return false
@@ -389,34 +397,52 @@ export const useQuestStore = defineStore('quest', {
     },
     setPhaseOverride(phase: QuestState['phaseOverride']): void {
       this.phaseOverride = phase
+      this.persist()
+    },
+    startClock(): void {
+      if (clockTimer !== null) return
+      clockTimer = window.setInterval(() => {
+        this.clockTick = Date.now()
+      }, 60_000)
     },
     clearToast(): void {
       this.toast = ''
     },
     async hydrate(): Promise<void> {
+      let saved: Partial<QuestState> | null = null
+      const raw = localStorage.getItem('morningquest-demo')
+      if (raw) {
+        try {
+          saved = JSON.parse(raw) as Partial<QuestState>
+        } catch {
+          localStorage.removeItem('morningquest-demo')
+        }
+      }
+
       // try to load from server first
       try {
         const plan = await apiClient.getPlan(this.plan.localDate)
         const game = await apiClient.getGameState()
         this.$patch({ plan: normalizePlan(plan), game })
-        return
       } catch {
         // fallback to localStorage
       }
 
-      const raw = localStorage.getItem('morningquest-demo')
-      if (!raw) return
-      try {
-        const saved = JSON.parse(raw) as Partial<QuestState>
-        if (saved.plan && saved.game) {
-          this.$patch({
-            ...saved,
-            plan: saved.plan,
-            game: saved.game,
-          })
+      if (saved) {
+        this.$patch({
+          userName: saved.userName ?? this.userName,
+          isAuthenticated: saved.isAuthenticated ?? this.isAuthenticated,
+          onboardingCompleted: saved.onboardingCompleted ?? this.onboardingCompleted,
+          phaseOverride: saved.phaseOverride ?? this.phaseOverride,
+          processedBattles: saved.processedBattles ?? this.processedBattles,
+        })
+        if (!saved.plan || !saved.game) {
+          return
         }
-      } catch {
-        localStorage.removeItem('morningquest-demo')
+        this.$patch({
+          plan: saved.plan,
+          game: saved.game,
+        })
       }
     },
     persist(): void {
@@ -427,6 +453,7 @@ export const useQuestStore = defineStore('quest', {
           isAuthenticated: this.isAuthenticated,
           onboardingCompleted: this.onboardingCompleted,
           phaseOverride: this.phaseOverride,
+          clockTick: this.clockTick,
           plan: this.plan,
           game: this.game,
           processedBattles: this.processedBattles,
@@ -442,6 +469,7 @@ export const useQuestStore = defineStore('quest', {
         onboardingCompleted: init.onboardingCompleted,
         isOffline: init.isOffline,
         phaseOverride: init.phaseOverride,
+        clockTick: init.clockTick,
         plan: init.plan,
         game: init.game,
         processedBattles: {},

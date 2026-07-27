@@ -8,6 +8,7 @@ import ai_routes
 import qr_routes
 import plans_routes
 import battles_routes
+import auth_routes
 
 app = FastAPI(title="MorningQuest API")
 
@@ -40,6 +41,7 @@ app.include_router(ai_routes.router)
 app.include_router(qr_routes.router)
 app.include_router(plans_routes.router)
 app.include_router(battles_routes.router)
+app.include_router(auth_routes.router)
 
 @app.get("/")
 def root():

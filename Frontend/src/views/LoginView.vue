@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuestStore } from '@/stores/quest'
+import { apiClient, setAccessToken } from '@/services/apiClient'
 
 const router = useRouter()
 const store = useQuestStore()
@@ -17,13 +18,20 @@ async function login() {
     return
   }
   submitting.value = true
-  await new Promise((resolve) => window.setTimeout(resolve, 350))
-  store.setAuthenticated(true)
+  try {
+    const res = await apiClient.login(email.value, password.value)
+    setAccessToken(res.accessToken)
+    store.setUserName(res.user.name)
+    store.setAuthenticated(true)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'ログインに失敗しました'
+  }
   submitting.value = false
-  void router.replace(store.onboardingCompleted ? '/home' : '/onboarding')
+  if (!error.value) void router.replace(store.onboardingCompleted ? '/home' : '/onboarding')
 }
 
 function useDemo() {
+  store.setUserName('ゆうき')
   store.setAuthenticated(true)
   void router.replace('/home')
 }

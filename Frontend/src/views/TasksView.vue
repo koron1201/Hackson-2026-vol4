@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { QuestTask } from '../domain/types'
 import { useRouter } from 'vue-router'
 import TaskCard from '@/components/TaskCard.vue'
+import { formatMinutes, minutesUntilClock } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
 import type { TaskStatus } from '../domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
 const filter = ref<'ALL' | TaskStatus>('ALL')
+const now = ref(new Date())
+let timerId: number | undefined
 
 const filters: { value: 'ALL' | TaskStatus; label: string }[] = [
   { value: 'ALL', label: 'すべて' },
@@ -22,6 +25,21 @@ const filteredTasks = computed(() =>
     ? store.tasks
     : store.tasks.filter((task: QuestTask) => task.status === filter.value),
 )
+
+const bedtimeCountdown = computed(() => {
+  const remainingMinutes = minutesUntilClock(store.plan.sleepTime, now.value)
+  return remainingMinutes > 0 ? `就寝まであと${formatMinutes(remainingMinutes)}` : '就寝時刻です'
+})
+
+onMounted(() => {
+  timerId = window.setInterval(() => {
+    now.value = new Date()
+  }, 60_000)
+})
+
+onBeforeUnmount(() => {
+  if (timerId) window.clearInterval(timerId)
+})
 
 async function handleStart(taskId: string) {
   const task = store.tasks.find((item: QuestTask) => item.id === taskId)
@@ -52,7 +70,7 @@ async function handleComplete(taskId: string) {
     <section class="forecast-strip" :data-risk="store.forecast.riskLevel">
       <span class="forecast-strip__icon" aria-hidden="true">◷</span>
       <div>
-        <strong>就寝見込み 23:45</strong>
+        <strong>{{ bedtimeCountdown }}</strong>
         <p>残り{{ store.forecast.remainingMinutes }}分 / 使える{{ store.forecast.effectiveAvailableMinutes }}分</p>
       </div>
       <span class="risk-badge" :data-risk="store.forecast.riskLevel">{{ store.forecast.riskLevel }}</span>

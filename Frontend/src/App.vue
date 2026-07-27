@@ -18,6 +18,7 @@ function syncNetworkState() {
 
 onMounted(() => {
   store.hydrate()
+  store.startClock()
   syncNetworkState()
   window.addEventListener('online', syncNetworkState)
   window.addEventListener('offline', syncNetworkState)

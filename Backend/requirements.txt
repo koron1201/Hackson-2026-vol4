@@ -7,3 +7,5 @@ openai
 qrcode
 pillow
 python-dotenv
+passlib
+python-jose[cryptography]
