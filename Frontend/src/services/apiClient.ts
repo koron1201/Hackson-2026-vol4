@@ -154,5 +154,6 @@ export function createApiClient(
   }
 }
 
-export const isBackendConfigured = Boolean(import.meta.env.VITE_API_BASE_URL?.trim())
+export const isBackendConfigured =
+  import.meta.env.MODE !== 'test' && Boolean(import.meta.env.VITE_API_BASE_URL?.trim())
 export const apiClient = createApiClient(import.meta.env.VITE_API_BASE_URL)

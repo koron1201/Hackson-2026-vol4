@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { calculateProgress, estimateBattleDamage, forecastDay } from '@/domain/quest'
+import { calculateProgress, estimateBattleDamage, forecastDay, minutesUntilClock } from '@/domain/quest'
 import {
   apiClient,
   isBackendConfigured,
@@ -20,6 +20,7 @@ interface QuestState {
   onboardingCompleted: boolean
   isOffline: boolean
   phaseOverride: 'night' | 'morning' | 'daytime' | null
+  clockTick: number
   plan: DailyPlan
   game: GameState
   processedBattles: Record<string, BattleResult>
@@ -101,6 +102,8 @@ const demoInventory: InventoryItem[] = [
   },
 ]
 
+let clockTimer: number | null = null
+
 function initialState(): QuestState {
   if (isBackendConfigured) {
     return {
@@ -110,6 +113,7 @@ function initialState(): QuestState {
       onboardingCompleted: true,
       isOffline: false,
       phaseOverride: null,
+      clockTick: Date.now(),
       plan: {
         localDate: new Date().toISOString().slice(0, 10),
         wakeTime: '07:00',
@@ -138,6 +142,7 @@ function initialState(): QuestState {
     onboardingCompleted: true,
     isOffline: false,
     phaseOverride: null,
+    clockTick: Date.now(),
     plan: {
       localDate: new Date().toISOString().slice(0, 10),
       wakeTime: '07:00',
@@ -251,7 +256,8 @@ export const useQuestStore = defineStore('quest', {
   getters: {
     tasks: (state): QuestTask[] => state.plan.tasks,
     progress: (state) => calculateProgress(state.plan.tasks),
-    forecast: (state) => forecastDay(state.plan.tasks, 180),
+    forecast: (state) =>
+      forecastDay(state.plan.tasks, minutesUntilClock(state.plan.sleepTime, new Date(state.clockTick))),
     availableItems: (state) => state.game.inventory.filter((item) => item.state === 'AVAILABLE'),
     nextTask: (state) =>
       state.plan.tasks.find((task) => task.status === 'TODO') ??
@@ -448,6 +454,12 @@ export const useQuestStore = defineStore('quest', {
     setPhaseOverride(phase: QuestState['phaseOverride']): void {
       this.phaseOverride = phase
     },
+    startClock(): void {
+      if (clockTimer !== null) return
+      clockTimer = window.setInterval(() => {
+        this.clockTick = Date.now()
+      }, 60_000)
+    },
     clearToast(): void {
       this.toast = ''
     },
@@ -477,6 +489,7 @@ export const useQuestStore = defineStore('quest', {
           isAuthenticated: this.isAuthenticated,
           onboardingCompleted: this.onboardingCompleted,
           phaseOverride: this.phaseOverride,
+          clockTick: this.clockTick,
           plan: this.plan,
           game: this.game,
           processedBattles: this.processedBattles,

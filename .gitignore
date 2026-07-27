@@ -1,8 +1,34 @@
+# フロントエンド・環境変数設定
 .codex/
 .agents/
+.env
 AGENTS.md
 Frontend/node_modules/
 Frontend/dist/
 Frontend/coverage/
 Frontend/.env.local
 Frontend/.env.*.local
+
+# --------------------------------------------------
+# バックエンド (Python / FastAPI / SQLite)
+# --------------------------------------------------
+# データベースファイル
+*.db
+*.sqlite3
+*.db-journal
+app.db
+
+# Python キャッシュファイル
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 仮想環境 (venv)
+.venv/
+venv/
+env/
+
+# OS・エディタ固有のキャッシュ
+.DS_Store
+Thumbs.db
+.vscode/
