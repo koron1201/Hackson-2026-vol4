@@ -86,6 +86,7 @@ async function openNextTask() {
         :key="item"
         type="button"
         :class="{ active: phase === item }"
+        :aria-pressed="phase === item"
         @click="store.setPhaseOverride(item)"
       >
         {{ phaseLabel[item] }}

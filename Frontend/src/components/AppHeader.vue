@@ -13,6 +13,13 @@ const store = useQuestStore()
       <span>Morning<span>Quest</span></span>
     </RouterLink>
     <div class="app-header__actions">
+      <RouterLink class="header-player" to="/settings" aria-label="プロフィールと設定">
+        <span class="header-player__avatar" aria-hidden="true">✦</span>
+        <span>
+          <strong>Lv.{{ store.game.level }}</strong>
+          <small>{{ store.game.xp.toLocaleString() }} XP</small>
+        </span>
+      </RouterLink>
       <span class="sync-state" :class="{ 'sync-state--offline': store.isOffline }">
         <span aria-hidden="true">{{ store.isOffline ? '●' : '●' }}</span>
         {{ store.isOffline ? 'オフライン' : '同期済み' }}

@@ -310,7 +310,7 @@ export const useQuestStore = defineStore('quest', {
     },
     async removeTask(taskId: string): Promise<void> {
       const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
-      if (!task) return
+      if (!task || task.status === 'DONE') return
 
       // optimistic remove
       const prevTasks = [...this.plan.tasks]

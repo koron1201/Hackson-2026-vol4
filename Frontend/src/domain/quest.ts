@@ -42,7 +42,9 @@ export function forecastDay(tasks: QuestTask[], minutesUntilSleep: number): Fore
 }
 
 export function minutesUntilClock(clock: string, now = new Date()): number {
-  const [hours, minutes] = clock.split(':').map((value) => Number(value))
+  const [hoursValue, minutesValue] = clock.split(':')
+  const hours = Number(hoursValue)
+  const minutes = Number(minutesValue)
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0
 
   const target = new Date(now)

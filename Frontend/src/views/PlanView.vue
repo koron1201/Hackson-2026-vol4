@@ -108,7 +108,13 @@ async function removeTask(taskId: string) {
               </span>
               <small v-if="aiSuggested && task.taskType === 'DAILY'">AI候補 · 保存前に確認してください</small>
             </div>
-            <button type="button" class="icon-button" :aria-label="`${task.title}を削除`" @click="removeTask(task.id)">
+            <button
+              v-if="task.status !== 'DONE'"
+              type="button"
+              class="icon-button"
+              :aria-label="`${task.title}を削除`"
+              @click="removeTask(task.id)"
+            >
               ×
             </button>
           </div>

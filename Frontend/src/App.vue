@@ -11,6 +11,14 @@ const router = useRouter()
 const store = useQuestStore()
 
 const hideChrome = computed(() => Boolean(route.meta.hideChrome))
+const displayPhase = computed(() => {
+  if (store.phaseOverride) return store.phaseOverride
+
+  const hour = new Date(store.clockTick).getHours()
+  if (hour < 9) return 'morning'
+  if (hour >= 20) return 'night'
+  return 'daytime'
+})
 
 function syncNetworkState() {
   store.setOffline(!navigator.onLine)
@@ -33,7 +41,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-frame" :class="{ 'app-frame--immersive': hideChrome }">
+  <div
+    class="app-frame"
+    :class="[
+      `app-frame--${displayPhase}`,
+      { 'app-frame--morning': displayPhase !== 'night', 'app-frame--immersive': hideChrome },
+    ]"
+  >
     <div v-if="store.isOffline" class="offline-banner" role="status">
       オフラインです。操作は端末に保持され、再接続後に同期されます。
     </div>
