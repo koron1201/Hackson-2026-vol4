@@ -17,12 +17,12 @@ const store = useQuestStore()
         <span class="header-player__avatar" aria-hidden="true">✦</span>
         <span>
           <strong>Lv.{{ store.game.level }}</strong>
-          <small>{{ store.game.xp.toLocaleString() }} XP</small>
+          <small>{{ store.game.coins.toLocaleString() }} コイン</small>
         </span>
       </RouterLink>
       <span class="sync-state" :class="{ 'sync-state--offline': store.isOffline }">
         <span aria-hidden="true">{{ store.isOffline ? '●' : '●' }}</span>
-        {{ store.isOffline ? 'オフライン' : '同期済み' }}
+        {{ store.isOffline ? 'オフライン' : store.backendEnabled ? 'API接続' : 'ローカル' }}
       </span>
       <RouterLink
         v-if="route.path !== '/settings'"

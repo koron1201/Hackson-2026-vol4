@@ -2,36 +2,25 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuestStore } from '@/stores/quest'
-import { apiClient, setAccessToken } from '@/services/apiClient'
 
 const router = useRouter()
 const store = useQuestStore()
-const email = ref('')
-const password = ref('')
 const error = ref('')
 const submitting = ref(false)
 
-async function login() {
+async function connectBackend() {
   error.value = ''
-  if (!email.value.includes('@') || password.value.length < 8) {
-    error.value = 'メールアドレスと8文字以上のパスワードを入力してください。'
+  submitting.value = true
+  const connected = await store.connectBackend()
+  submitting.value = false
+  if (!connected) {
+    error.value = 'バックエンドへ接続できません。起動状態と接続先を確認してください。'
     return
   }
-  submitting.value = true
-  try {
-    const res = await apiClient.login(email.value, password.value)
-    setAccessToken(res.accessToken)
-    store.setUserName(res.user.name)
-    store.setAuthenticated(true)
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'ログインに失敗しました'
-  }
-  submitting.value = false
-  if (!error.value) void router.replace(store.onboardingCompleted ? '/home' : '/onboarding')
+  void router.replace('/home')
 }
 
 function useDemo() {
-  store.setUserName('ゆうき')
   store.setAuthenticated(true)
   void router.replace('/home')
 }
@@ -47,29 +36,36 @@ function useDemo() {
       </div>
       <h1>毎日の行動を、<br />小さな冒険に。</h1>
       <p>夜に決めて、朝はQRで始める。今日の達成が、夜のバトルで力になります。</p>
-      <img src="/assets/hero.png" alt="MorningQuestの冒険者キャラクター" />
+      <img :src="'/assets/hero.png'" alt="MorningQuestの冒険者キャラクター" />
     </section>
     <section class="auth-card">
-      <p class="eyebrow">WELCOME BACK</p>
-      <h2>冒険を続ける</h2>
-      <form @submit.prevent="login">
-        <label>
-          <span>メールアドレス</span>
-          <input v-model.trim="email" type="email" autocomplete="email" placeholder="you@example.com" required />
-        </label>
-        <label>
-          <span>パスワード</span>
-          <input v-model="password" type="password" autocomplete="current-password" minlength="8" placeholder="8文字以上" required />
-        </label>
+      <template v-if="store.backendEnabled">
+        <p class="eyebrow">API CONNECTION</p>
+        <h2>バックエンドへ接続</h2>
+        <p>バックエンドの起動を確認してから、クエスト管理を始めます。</p>
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <button class="button button--wide" type="submit" :disabled="submitting">
-          {{ submitting ? '確認中…' : 'ログイン' }}
+        <button
+          class="button button--wide"
+          type="button"
+          data-testid="connect-backend"
+          :disabled="submitting"
+          @click="connectBackend"
+        >
+          {{ submitting ? '接続確認中…' : '接続して始める' }}
         </button>
-      </form>
-      <button class="button button--outline button--wide" type="button" @click="useDemo">
-        デモモードで始める
-      </button>
-      <p class="auth-note">デモモードでは入力した認証情報を保存・送信しません。</p>
+        <p class="auth-note">
+          現在のバックエンドには認証APIがないため、固定ユーザーID 1を使用します。
+        </p>
+      </template>
+      <template v-else>
+        <p class="eyebrow">LOCAL DEMO</p>
+        <h2>デモを始める</h2>
+        <p>バックエンドへ送信せず、この端末内だけで主要画面を確認します。</p>
+        <button class="button button--outline button--wide" type="button" @click="useDemo">
+          デモモードで始める
+        </button>
+        <p class="auth-note">入力した認証情報を装うフォームは使用しません。</p>
+      </template>
     </section>
   </div>
 </template>

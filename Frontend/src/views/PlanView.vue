@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { validatePlanDraft } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
-import type { PlaceType } from '../domain/types'
+import type { PlaceType } from '@/domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
@@ -12,7 +12,7 @@ const sleepTime = ref(store.plan.sleepTime)
 const newTask = ref('')
 const newTaskPlace = ref<PlaceType>('NONE')
 const errors = ref<string[]>([])
-const aiSuggested = ref(false)
+const addingTask = ref(false)
 
 const totalMinutes = computed(() =>
   store.tasks.reduce((total, task) => total + task.estimatedMinutes, 0),
@@ -24,33 +24,29 @@ async function addTask() {
     errors.value = ['タスク名を入力してください']
     return
   }
-  await store.addTask(title, newTaskPlace.value)
-  newTask.value = ''
-  newTaskPlace.value = 'NONE'
+  addingTask.value = true
   errors.value = []
+  try {
+    await store.addTask(title, newTaskPlace.value)
+    newTask.value = ''
+    newTaskPlace.value = 'NONE'
+  } catch {
+    errors.value = ['タスクを登録できませんでした。通信状態を確認して再試行してください。']
+  } finally {
+    addingTask.value = false
+  }
 }
 
-function suggestWithRules() {
-  aiSuggested.value = true
-  errors.value = []
-}
-
-async function save() {
+function save() {
   errors.value = validatePlanDraft({
     wakeTime: wakeTime.value,
     sleepTime: sleepTime.value,
     taskTitles: store.tasks.map((task) => task.title),
   })
   if (errors.value.length > 0) return
-  await store.savePlan(wakeTime.value, sleepTime.value)
-  void router.push('/home')
-}
 
-async function removeTask(taskId: string) {
-  const task = store.tasks.find((t) => t.id === taskId)
-  const title = task?.title ?? 'このタスク'
-  if (!confirm(`${title} を削除してよいですか？`)) return
-  await store.removeTask(taskId)
+  store.savePlan(wakeTime.value, sleepTime.value)
+  void router.push('/home')
 }
 </script>
 
@@ -93,9 +89,7 @@ async function removeTask(taskId: string) {
               <p class="eyebrow">QUESTS</p>
               <h2>明日のクエスト</h2>
             </div>
-            <button class="text-button" type="button" @click="suggestWithRules">
-              ✦ AIでまとめて提案
-            </button>
+            <span>{{ store.backendEnabled ? 'AI分析＋API登録' : '端末内デモ' }}</span>
           </div>
 
           <div class="plan-task-row" v-for="task in store.tasks" :key="task.id">
@@ -106,14 +100,16 @@ async function removeTask(taskId: string) {
                 {{ task.estimatedMinutes }}分 · ★{{ task.weight }} ·
                 {{ task.requiredPlace === 'NONE' ? 'QRなし' : task.requiredPlace }}
               </span>
-              <small v-if="aiSuggested && task.taskType === 'DAILY'">AI候補 · 保存前に確認してください</small>
+              <small v-if="store.backendEnabled && task.taskType === 'DAILY'">
+                バックエンド登録済み · AI分類は保存前に正規化しています
+              </small>
             </div>
             <button
-              v-if="task.status !== 'DONE'"
               type="button"
               class="icon-button"
+              :disabled="task.status === 'DONE'"
               :aria-label="`${task.title}を削除`"
-              @click="removeTask(task.id)"
+              @click="store.removeTask(task.id)"
             >
               ×
             </button>
@@ -133,7 +129,14 @@ async function removeTask(taskId: string) {
                 <option value="ENTRANCE">玄関</option>
               </select>
             </label>
-            <button class="button button--outline" type="button" @click="addTask">＋ 追加する</button>
+            <button
+              class="button button--outline"
+              type="button"
+              :disabled="addingTask"
+              @click="addTask"
+            >
+              {{ addingTask ? '登録中…' : store.backendEnabled ? '✦ AI分析して追加' : '＋ 追加する' }}
+            </button>
           </div>
         </section>
       </div>
@@ -156,7 +159,9 @@ async function removeTask(taskId: string) {
           <li v-for="error in errors" :key="error">{{ error }}</li>
         </ul>
         <button class="button button--wide" type="submit">計画を保存してアラーム設定</button>
-        <p class="helper-text">Webアラームはページを前面表示中に動作します。</p>
+        <p class="helper-text">
+          Webアラームと計画時刻は端末内に保存します。現在のバックエンドにはプラン保存APIがありません。
+        </p>
       </aside>
     </form>
   </div>
