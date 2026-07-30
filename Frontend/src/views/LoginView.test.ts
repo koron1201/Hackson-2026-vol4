@@ -61,4 +61,19 @@ describe('LoginView', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('8文字以上')
     expect(replace).not.toHaveBeenCalled()
   })
+
+  it('バックエンドモードでも認証情報なしでローカルデモへ入れる', async () => {
+    const store = useQuestStore()
+    store.backendEnabled = true
+    store.isAuthenticated = false
+    const wrapper = mount(LoginView)
+
+    await wrapper.get('[data-testid="demo-login"]').trigger('click')
+
+    expect(login).not.toHaveBeenCalled()
+    expect(setAccessToken).toHaveBeenCalledWith(null)
+    expect(store.backendEnabled).toBe(false)
+    expect(store.isAuthenticated).toBe(true)
+    expect(replace).toHaveBeenCalledWith('/home')
+  })
 })
