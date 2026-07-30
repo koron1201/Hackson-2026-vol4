@@ -68,6 +68,17 @@ describe('quest store in backend mode', () => {
     expect(store.toast).toContain('接続できません')
   })
 
+  it('ゲスト開始でバックエンド接続を使わないローカルデモへ切り替える', () => {
+    const store = useQuestStore()
+
+    store.enterDemoMode()
+
+    expect(store.backendEnabled).toBe(false)
+    expect(store.isAuthenticated).toBe(true)
+    expect(store.tasks.length).toBeGreaterThan(0)
+    expect(store.game.enemyName).toBe('洞窟のゴブリン')
+  })
+
   it('AI分析結果を使ってタスクを作成しバックエンドIDを保持する', async () => {
     apiMocks.analyzeTask.mockResolvedValue({
       category: 'PC_WORK',

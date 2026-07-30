@@ -61,4 +61,19 @@ describe('LoginView', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('8文字以上')
     expect(replace).not.toHaveBeenCalled()
   })
+
+  it('入力なしのゲスト導線でローカルデモへ進む', async () => {
+    const store = useQuestStore()
+    store.backendEnabled = true
+    store.isAuthenticated = false
+    const wrapper = mount(LoginView)
+
+    await wrapper.get('[data-testid="guest-login"]').trigger('click')
+
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith('/home'))
+    expect(login).not.toHaveBeenCalled()
+    expect(setAccessToken).toHaveBeenCalledWith(null)
+    expect(store.backendEnabled).toBe(false)
+    expect(store.tasks.length).toBeGreaterThan(0)
+  })
 })

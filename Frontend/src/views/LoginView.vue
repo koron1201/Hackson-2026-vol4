@@ -33,8 +33,8 @@ async function login() {
 }
 
 function useDemo() {
-  store.setUserName('ゆうき')
-  store.setAuthenticated(true)
+  setAccessToken(null)
+  store.enterDemoMode()
   void router.replace('/home')
 }
 </script>
@@ -70,12 +70,18 @@ function useDemo() {
           </button>
         </form>
         <p class="auth-note">認証トークンはブラウザの永続ストレージへ保存しません。</p>
+        <div class="auth-guest-action">
+          <p class="auth-note">アカウントがなくても、入力なしでローカルデモを始められます。</p>
+          <button class="button button--outline button--wide" type="button" data-testid="guest-login" @click="useDemo">
+            入力なしでデモを始める
+          </button>
+        </div>
       </template>
       <template v-else>
         <p class="eyebrow">LOCAL DEMO</p>
         <h2>デモを始める</h2>
         <p>バックエンドへ送信せず、この端末内だけで主要画面を確認します。</p>
-        <button class="button button--outline button--wide" type="button" @click="useDemo">
+        <button class="button button--outline button--wide" type="button" data-testid="guest-login" @click="useDemo">
           デモモードで始める
         </button>
         <p class="auth-note">入力した認証情報を保存・送信しません。</p>

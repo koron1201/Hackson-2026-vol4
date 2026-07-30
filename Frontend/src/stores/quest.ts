@@ -117,6 +117,36 @@ const demoInventory: InventoryItem[] = [
   },
 ]
 
+function createDemoState(): Omit<QuestState, 'backendEnabled' | 'isOffline'> {
+  const today = new Date().toISOString().slice(0, 10)
+
+  return {
+    userName: 'ゆうき',
+    isAuthenticated: true,
+    onboardingCompleted: true,
+    phaseOverride: null,
+    clockTick: Date.now(),
+    plan: {
+      localDate: today,
+      wakeTime: '07:00',
+      sleepTime: '23:30',
+      version: 1,
+      tasks: structuredClone(demoTasks),
+    },
+    game: {
+      level: 12,
+      coins: 1240,
+      streakDays: 7,
+      enemyName: '洞窟のゴブリン',
+      enemyHp: 380,
+      enemyMaxHp: 700,
+      inventory: structuredClone(demoInventory),
+    },
+    processedBattles: {},
+    toast: '',
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
 }
@@ -287,27 +317,7 @@ function initialState(): QuestState {
     }
   }
 
-  return {
-    backendEnabled: false,
-    userName: 'ゆうき',
-    isAuthenticated: true,
-    onboardingCompleted: true,
-    isOffline: false,
-    phaseOverride: null,
-    clockTick: Date.now(),
-    plan: { localDate: today, wakeTime: '07:00', sleepTime: '23:30', version: 1, tasks: structuredClone(demoTasks) },
-    game: {
-      level: 12,
-      coins: 1240,
-      streakDays: 7,
-      enemyName: '洞窟のゴブリン',
-      enemyHp: 380,
-      enemyMaxHp: 700,
-      inventory: structuredClone(demoInventory),
-    },
-    processedBattles: {},
-    toast: '',
-  }
+  return { backendEnabled: false, isOffline: false, ...createDemoState() }
 }
 
 function persistenceKey(backendEnabled: boolean): string {
@@ -351,6 +361,11 @@ export const useQuestStore = defineStore('quest', {
   actions: {
     setUserName(userName: string): void {
       this.userName = userName.trim() || this.userName
+      this.persist()
+    },
+    enterDemoMode(): void {
+      this.backendEnabled = false
+      this.$patch(createDemoState())
       this.persist()
     },
     async connectBackend(): Promise<boolean> {

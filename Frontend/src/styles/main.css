@@ -2095,6 +2095,17 @@ dd {
   font-size: 10px;
 }
 
+.auth-guest-action {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.auth-guest-action .auth-note {
+  margin-top: 0;
+  margin-bottom: 13px;
+}
+
 .auth-sun {
   position: absolute;
   top: -80px;
