@@ -1,28 +1,28 @@
 :root {
-  color-scheme: light;
-  --green-900: #123d2d;
-  --green-800: #18563b;
-  --green-700: #23764b;
-  --green-600: #2f9558;
-  --green-500: #45af66;
-  --green-100: #e3f4e6;
-  --green-50: #f1f9f2;
-  --blue-700: #1563a6;
-  --blue-500: #2187d5;
-  --blue-100: #e2f1fb;
-  --orange-500: #f3a32c;
-  --orange-100: #fff0d6;
-  --red-600: #cc3030;
-  --red-100: #fde8e7;
-  --navy-950: #071827;
-  --navy-900: #0d2639;
-  --ink: #18312b;
-  --muted: #6d7f79;
-  --line: #dce6e1;
-  --surface: #ffffff;
-  --canvas: #f6f9f7;
-  --shadow: 0 14px 40px rgba(25, 63, 48, 0.08);
-  --shadow-soft: 0 6px 20px rgba(25, 63, 48, 0.07);
+  color-scheme: dark;
+  --green-900: #071a19;
+  --green-800: #0d4f3b;
+  --green-700: #177458;
+  --green-600: #2a9b6b;
+  --green-500: #55d996;
+  --green-100: rgba(85, 217, 150, 0.14);
+  --green-50: rgba(85, 217, 150, 0.07);
+  --blue-700: #65bbd3;
+  --blue-500: #4b9fbe;
+  --blue-100: rgba(75, 159, 190, 0.15);
+  --orange-500: #e9b84f;
+  --orange-100: rgba(233, 184, 79, 0.15);
+  --red-600: #ed6b5c;
+  --red-100: rgba(237, 107, 92, 0.15);
+  --navy-950: #061219;
+  --navy-900: #0b202b;
+  --ink: #f7f0df;
+  --muted: #9ab0ad;
+  --line: rgba(233, 184, 79, 0.2);
+  --surface: #102630;
+  --canvas: #07151d;
+  --shadow: 0 18px 55px rgba(0, 0, 0, 0.32);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.22);
   --radius-xl: 28px;
   --radius-lg: 20px;
   --radius-md: 14px;
@@ -163,6 +163,43 @@ strong {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 11px 4px 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(16, 38, 48, 0.68);
+}
+
+.header-player__avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--green-900);
+  background: linear-gradient(145deg, #ffe49a, #c7952e);
+  font-size: 16px;
+}
+
+.header-player > span:last-child {
+  display: grid;
+  gap: 1px;
+}
+
+.header-player strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.header-player small {
+  color: var(--muted);
+  font-size: 9px;
 }
 
 .sync-state {
@@ -2243,6 +2280,14 @@ dd {
     display: none;
   }
 
+  .header-player {
+    padding-right: 5px;
+  }
+
+  .header-player > span:last-child {
+    display: none;
+  }
+
   .app-main {
     width: calc(100% - 24px);
     padding-bottom: 108px;
@@ -2462,4 +2507,1213 @@ dd {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Night-sky visual system: the product moves between planning, action and reward. */
+body {
+  background:
+    radial-gradient(circle at 8% -5%, rgba(48, 143, 105, 0.24), transparent 25rem),
+    radial-gradient(circle at 92% 12%, rgba(233, 184, 79, 0.08), transparent 22rem),
+    var(--canvas);
+}
+
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  opacity: 0.18;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.5) 0.5px, transparent 0.5px);
+  background-size: 23px 23px;
+  pointer-events: none;
+}
+
+.app-header {
+  border-bottom-color: rgba(233, 184, 79, 0.16);
+  background: rgba(7, 21, 29, 0.82);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.brand {
+  color: var(--ink);
+}
+
+.brand > span:last-child > span {
+  color: var(--green-500);
+}
+
+.brand__sun {
+  color: var(--green-900);
+  background: linear-gradient(145deg, #ffe39a, var(--orange-500));
+  box-shadow: 0 0 0 5px rgba(233, 184, 79, 0.12), 0 0 24px rgba(233, 184, 79, 0.3);
+}
+
+.sync-state {
+  color: var(--muted);
+}
+
+.sync-state > span {
+  color: var(--green-500);
+}
+
+.sync-state--offline > span {
+  color: var(--orange-500);
+}
+
+.icon-button,
+.notification-button {
+  border-color: var(--line);
+  color: var(--ink);
+  background: rgba(16, 38, 48, 0.92);
+}
+
+.icon-button:hover,
+.notification-button:hover {
+  border-color: rgba(233, 184, 79, 0.55);
+  background: #173540;
+}
+
+.bottom-nav {
+  bottom: max(13px, env(safe-area-inset-bottom));
+  border-color: rgba(233, 184, 79, 0.24);
+  background: rgba(9, 27, 36, 0.9);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(85, 217, 150, 0.05);
+}
+
+.bottom-nav a {
+  color: #7f9997;
+}
+
+.bottom-nav a.router-link-active {
+  color: var(--orange-500);
+  background: linear-gradient(180deg, rgba(233, 184, 79, 0.18), rgba(85, 217, 150, 0.09));
+  box-shadow: inset 0 0 0 1px rgba(233, 184, 79, 0.22);
+}
+
+.offline-banner {
+  color: #f9dd97;
+  background: rgba(109, 74, 16, 0.9);
+  border-bottom: 1px solid rgba(233, 184, 79, 0.3);
+}
+
+.page {
+  padding-top: 42px;
+}
+
+.eyebrow {
+  color: var(--orange-500);
+  text-shadow: 0 0 18px rgba(233, 184, 79, 0.18);
+}
+
+.card {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(145deg, rgba(18, 45, 57, 0.98), rgba(11, 31, 40, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(233, 184, 79, 0.42), rgba(85, 217, 150, 0.12) 45%, rgba(233, 184, 79, 0.08)) border-box;
+  box-shadow: var(--shadow-soft);
+}
+
+.button {
+  border-color: rgba(233, 184, 79, 0.6);
+  color: #071a19;
+  background: linear-gradient(135deg, #5ce09b, #1d9a6c);
+  box-shadow: 0 9px 22px rgba(32, 157, 107, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+.button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7be9b1, #28b47d);
+}
+
+.button--outline {
+  color: var(--orange-500);
+  border-color: var(--line);
+  background: rgba(16, 38, 48, 0.7);
+  box-shadow: none;
+}
+
+.button--outline:hover:not(:disabled) {
+  border-color: rgba(233, 184, 79, 0.55);
+  background: rgba(233, 184, 79, 0.1);
+}
+
+.text-button {
+  color: var(--green-500);
+}
+
+.text-button--danger {
+  color: var(--red-600);
+}
+
+.section-heading > a,
+.section-heading > span {
+  color: var(--orange-500);
+}
+
+.welcome-row,
+.page-title,
+.battle-header {
+  margin-bottom: 27px;
+}
+
+.welcome-row h1,
+.page-title h1,
+.battle-header h1 {
+  color: var(--ink);
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.28);
+}
+
+.page-title p:last-child {
+  color: var(--muted);
+}
+
+.notification-button > span {
+  border-color: var(--canvas);
+  color: var(--green-900);
+  background: var(--orange-500);
+}
+
+.phase-switcher {
+  border-color: var(--line);
+  background: rgba(12, 31, 40, 0.82);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+.phase-switcher button {
+  color: var(--muted);
+}
+
+.phase-switcher button.active {
+  color: var(--green-900);
+  background: linear-gradient(135deg, #f2cf73, #c7952e);
+  box-shadow: 0 5px 16px rgba(233, 184, 79, 0.18);
+}
+
+.phase-switcher > span {
+  color: var(--muted);
+}
+
+.hero-card {
+  border: 1px solid rgba(233, 184, 79, 0.52);
+  background:
+    radial-gradient(circle at 77% 18%, rgba(233, 184, 79, 0.28), transparent 13rem),
+    radial-gradient(circle at 38% 120%, rgba(85, 217, 150, 0.32), transparent 18rem),
+    linear-gradient(135deg, #0a211f 0%, #0d4d43 55%, #163c48 100%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(85, 217, 150, 0.08);
+}
+
+.hero-card::before,
+.hero-card::after {
+  border-color: rgba(233, 184, 79, 0.18);
+}
+
+.quest-chip {
+  border-color: rgba(233, 184, 79, 0.42);
+  color: #ffe5a1;
+  background: rgba(233, 184, 79, 0.12);
+}
+
+.hero-card p {
+  color: rgba(244, 247, 232, 0.72);
+}
+
+.button--hero {
+  color: var(--green-900);
+  border-color: #f7d27b;
+  background: linear-gradient(135deg, #ffe49a, #d6a63b);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+}
+
+.button--hero:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fff1bd, #e9b84f);
+}
+
+.hero-card__visual img,
+.auth-intro > img,
+.avatar img {
+  mix-blend-mode: darken;
+  filter: drop-shadow(0 22px 18px rgba(0, 0, 0, 0.45));
+}
+
+.sun-orbit {
+  border-color: rgba(233, 184, 79, 0.35);
+}
+
+.sun-orbit::after {
+  background: #f2c75f;
+  box-shadow: 0 0 32px rgba(242, 199, 95, 0.85);
+}
+
+.progress-ring {
+  background: conic-gradient(var(--green-500) var(--progress), rgba(233, 184, 79, 0.16) 0deg);
+  box-shadow: 0 0 26px rgba(85, 217, 150, 0.16);
+}
+
+.progress-ring__inner {
+  background: #102630;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.progress-ring strong {
+  color: var(--ink);
+}
+
+.progress-ring span,
+.progress-stats small {
+  color: var(--muted);
+}
+
+.stat-icon--green {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.stat-icon--orange {
+  color: var(--orange-500);
+  background: var(--orange-100);
+}
+
+.status-dot {
+  color: var(--orange-500) !important;
+  background: var(--orange-100);
+}
+
+.quest-icon {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.forecast-card {
+  border-color: rgba(75, 159, 190, 0.34);
+  background:
+    radial-gradient(circle at 80% 20%, rgba(75, 159, 190, 0.2), transparent 12rem),
+    linear-gradient(135deg, #102b3d, #14243b);
+}
+
+.forecast-card strong {
+  color: #d7e9ed;
+}
+
+.forecast-card p {
+  color: var(--muted);
+}
+
+.risk-badge {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.risk-badge[data-risk="MEDIUM"] {
+  color: #f2c75f;
+  background: var(--orange-100);
+}
+
+.risk-badge[data-risk="HIGH"] {
+  color: #ff9b90;
+  background: var(--red-100);
+}
+
+.moon-scene > span {
+  color: #f1c75c;
+  text-shadow: 0 0 25px rgba(241, 199, 92, 0.45);
+}
+
+.moon-scene i {
+  background: #9bc5d1;
+}
+
+.battle-teaser {
+  border-color: rgba(75, 159, 190, 0.42);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(39, 112, 141, 0.56), transparent 18rem),
+    radial-gradient(circle at 90% 100%, rgba(85, 217, 150, 0.16), transparent 20rem),
+    linear-gradient(120deg, #07151d, #112b3b);
+}
+
+.battle-teaser .eyebrow {
+  color: var(--green-500);
+}
+
+.battle-teaser p:last-child {
+  color: #a9bec9;
+}
+
+.hp-bar {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hp-bar span {
+  background: linear-gradient(90deg, #ed6b5c, #f2c75f);
+}
+
+.button--battle {
+  border-color: rgba(75, 159, 190, 0.68);
+  background: linear-gradient(135deg, #55c3d6, #2a8ca8);
+  box-shadow: 0 9px 24px rgba(42, 140, 168, 0.26);
+}
+
+.forecast-strip {
+  border-color: var(--line);
+  border-left-color: var(--green-500);
+  background: rgba(16, 38, 48, 0.84);
+}
+
+.forecast-strip[data-risk="MEDIUM"] { border-left-color: var(--orange-500); }
+.forecast-strip[data-risk="HIGH"] { border-left-color: var(--red-600); }
+
+.forecast-strip__icon {
+  color: var(--blue-700);
+  background: var(--blue-100);
+}
+
+.forecast-strip p,
+.task-card__meta,
+.place-label {
+  color: var(--muted);
+}
+
+.filter-tabs button {
+  border-color: var(--line);
+  color: var(--muted);
+  background: rgba(16, 38, 48, 0.76);
+}
+
+.filter-tabs button.active {
+  color: var(--green-900);
+  border-color: var(--orange-500);
+  background: linear-gradient(135deg, #f2cf73, #c7952e);
+}
+
+.filter-tabs button span {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.task-card {
+  border-color: var(--line);
+  background: rgba(16, 38, 48, 0.88);
+}
+
+.task-card:hover {
+  border-color: rgba(233, 184, 79, 0.46);
+  transform: translateY(-2px);
+}
+
+.task-card--done {
+  background: rgba(11, 31, 40, 0.7);
+}
+
+.status-pill {
+  color: #f1cb78;
+  background: var(--orange-100);
+}
+
+.status-pill[data-status="STARTED"] {
+  color: var(--blue-700);
+  background: var(--blue-100);
+}
+
+.status-pill[data-status="DONE"] {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.done-mark {
+  color: var(--green-900);
+  background: var(--green-500);
+  box-shadow: 0 0 18px rgba(85, 217, 150, 0.24);
+}
+
+.empty-state {
+  border-color: var(--line);
+  background: rgba(16, 38, 48, 0.5);
+}
+
+.empty-state > span {
+  color: var(--orange-500);
+}
+
+.empty-state p {
+  color: var(--muted);
+}
+
+.floating-add {
+  color: var(--green-900);
+  background: linear-gradient(135deg, #f2cf73, #c7952e);
+  box-shadow: 0 12px 28px rgba(233, 184, 79, 0.26);
+}
+
+.time-card,
+.plan-tasks,
+.plan-summary .card,
+.inventory-card,
+.attack-panel .card,
+.settings-section,
+.settings-profile {
+  background:
+    linear-gradient(145deg, rgba(18, 45, 57, 0.98), rgba(11, 31, 40, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(233, 184, 79, 0.42), rgba(85, 217, 150, 0.12) 45%, rgba(233, 184, 79, 0.08)) border-box;
+}
+
+label > span,
+dt {
+  color: var(--muted);
+}
+
+input,
+select {
+  border-color: var(--line);
+  color: var(--ink);
+  background: rgba(7, 21, 29, 0.72);
+}
+
+input::placeholder {
+  color: #69817f;
+}
+
+option {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.time-fields input {
+  color: var(--orange-500);
+}
+
+.plan-task-row {
+  border-bottom-color: var(--line);
+}
+
+.drag-handle {
+  color: #78918e;
+}
+
+.plan-task-row span,
+.plan-task-row small {
+  color: var(--muted);
+}
+
+.plan-task-row small {
+  color: var(--blue-700);
+}
+
+.add-task-panel {
+  background: rgba(85, 217, 150, 0.08);
+  border: 1px solid rgba(85, 217, 150, 0.12);
+}
+
+.plan-health {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.form-errors {
+  color: #ff9b90;
+  background: var(--red-100);
+}
+
+.helper-text {
+  color: var(--muted);
+}
+
+.scanner-page {
+  background:
+    radial-gradient(circle at 50% 25%, rgba(53, 141, 105, 0.42), transparent 32rem),
+    #061219;
+}
+
+.scanner-copy .eyebrow,
+.secure-camera {
+  color: var(--green-500);
+}
+
+.scanner-copy p:last-child {
+  color: #a8bdc5;
+}
+
+.camera-stage {
+  border-color: rgba(233, 184, 79, 0.38);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45), 0 0 0 5px rgba(233, 184, 79, 0.06);
+}
+
+.scan-frame i {
+  border-color: #f4d477;
+}
+
+.scan-frame > span {
+  background: linear-gradient(90deg, transparent, #55d996, transparent);
+  box-shadow: 0 0 13px #55d996;
+}
+
+.button--light {
+  color: var(--green-900);
+  border-color: #f7d27b;
+  background: linear-gradient(135deg, #ffe49a, #d6a63b);
+}
+
+.text-button--light {
+  color: var(--green-500);
+}
+
+.camera-privacy {
+  color: #829ba5;
+}
+
+.alarm-page {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(215, 54, 43, 0.54), transparent 24rem),
+    linear-gradient(180deg, #55151c, #270c17 58%, #110912);
+}
+
+.alarm-live i {
+  background: #ff9b90;
+  box-shadow: 0 0 0 6px rgba(255, 155, 144, 0.14);
+}
+
+.alarm-page main > p:first-child,
+.alarm-page h2 + p,
+.alarm-start small,
+.scan-orb small,
+.alarm-status {
+  color: #e8bfc1;
+}
+
+.alarm-start {
+  border-color: rgba(233, 184, 79, 0.32);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.scan-orb {
+  border-color: rgba(242, 207, 115, 0.75);
+  background: radial-gradient(circle, rgba(233, 184, 79, 0.28), rgba(255, 255, 255, 0.04));
+  box-shadow: 0 0 0 13px rgba(233, 184, 79, 0.05), 0 0 55px rgba(233, 184, 79, 0.3);
+}
+
+.emergency-button {
+  color: #f0c7c7;
+}
+
+.alarm-glow {
+  background: rgba(255, 91, 73, 0.17);
+}
+
+.player-level strong {
+  color: var(--orange-500);
+}
+
+.player-level small {
+  color: var(--muted);
+}
+
+.battle-arena {
+  border-color: rgba(233, 184, 79, 0.3);
+  background:
+    radial-gradient(ellipse at 50% 85%, rgba(31, 97, 104, 0.48), transparent 35%),
+    radial-gradient(circle at 50% 20%, rgba(29, 82, 108, 0.55), transparent 22rem),
+    linear-gradient(180deg, #071421, #061018);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.34);
+}
+
+.enemy-name span {
+  color: #f2c75f;
+}
+
+.battle-item {
+  border-color: var(--line);
+  background: rgba(12, 31, 40, 0.82);
+}
+
+.battle-item.selected {
+  border-color: var(--green-500);
+  background: var(--green-100);
+  box-shadow: inset 0 0 0 3px #102630, 0 0 18px rgba(85, 217, 150, 0.12);
+}
+
+.battle-item small,
+.battle-item em {
+  color: var(--muted);
+}
+
+.item-icon {
+  color: var(--orange-500);
+  background: var(--orange-100);
+}
+
+.item-icon[data-type="BLADE"] {
+  color: var(--blue-700);
+  background: var(--blue-100);
+}
+
+.item-icon[data-type="CRYSTAL"] {
+  color: #bd9aff;
+  background: rgba(122, 88, 213, 0.2);
+}
+
+.damage-preview strong {
+  color: #ff8b75;
+}
+
+.button--attack {
+  border-color: #e56d5e;
+  background: linear-gradient(180deg, #ef806d, #b63b3e);
+  box-shadow: 0 9px 24px rgba(204, 48, 48, 0.3);
+}
+
+.next-plan-link {
+  color: var(--green-500);
+}
+
+.auth-page {
+  background:
+    radial-gradient(circle at 15% 10%, rgba(233, 184, 79, 0.18), transparent 17rem),
+    linear-gradient(125deg, #0a211f 0%, #07151d 50%, #102630 50%);
+}
+
+.auth-intro > p {
+  color: var(--muted);
+}
+
+.auth-card,
+.onboarding-card {
+  border-color: var(--line);
+  background:
+    linear-gradient(145deg, rgba(18, 45, 57, 0.98), rgba(11, 31, 40, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(233, 184, 79, 0.42), rgba(85, 217, 150, 0.12) 45%, rgba(233, 184, 79, 0.08)) border-box;
+  box-shadow: var(--shadow);
+}
+
+.auth-sun {
+  color: rgba(233, 184, 79, 0.12);
+}
+
+.onboarding-page {
+  background:
+    radial-gradient(circle at 50% 10%, rgba(85, 217, 150, 0.16), transparent 25rem),
+    var(--canvas);
+}
+
+.onboarding-page > header {
+  color: var(--muted);
+}
+
+.onboarding-visual {
+  color: var(--green-500);
+}
+
+.onboarding-visual span {
+  color: var(--orange-500);
+}
+
+.onboarding-card > p:last-child {
+  color: var(--muted);
+}
+
+.device-checks li {
+  background: var(--green-50);
+}
+
+.device-checks li > span {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.settings-profile p,
+.setting-row p,
+.qr-place p {
+  color: var(--muted);
+}
+
+.avatar {
+  background: var(--green-100);
+}
+
+.qr-place > span {
+  color: var(--blue-700);
+  background: var(--blue-100);
+}
+
+.qr-place em {
+  color: var(--green-500);
+  background: var(--green-100);
+}
+
+.setting-row,
+.qr-place {
+  border-bottom-color: var(--line);
+}
+
+.toast-notice {
+  border-color: rgba(85, 217, 150, 0.42);
+  color: var(--ink);
+  background: #12372d;
+}
+
+.toast-notice span {
+  color: var(--green-500);
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-top: 28px;
+  }
+
+  .hero-card {
+    min-height: 430px;
+  }
+
+  .hero-card__visual img {
+    opacity: 0.78;
+  }
+
+  .bottom-nav {
+    width: calc(100% - 22px);
+  }
+
+  .task-card:hover {
+    transform: none;
+  }
+}
+
+/* Light palette base: morning and daytime keep the same layout with separate moods. */
+.app-frame--morning {
+  --green-900: #16483b;
+  --green-800: #1e6b50;
+  --green-700: #25835f;
+  --green-600: #38a46f;
+  --green-500: #42b97b;
+  --green-100: rgba(66, 185, 123, 0.14);
+  --green-50: rgba(66, 185, 123, 0.08);
+  --blue-700: #28779c;
+  --blue-500: #4a9fc0;
+  --blue-100: rgba(74, 159, 192, 0.13);
+  --orange-500: #e99535;
+  --orange-100: rgba(233, 149, 53, 0.14);
+  --red-600: #cf5148;
+  --red-100: rgba(207, 81, 72, 0.12);
+  --ink: #183a34;
+  --muted: #6c8078;
+  --line: rgba(24, 72, 59, 0.15);
+  --surface: #fffefa;
+  --canvas: #fff8ec;
+  --shadow: 0 18px 55px rgba(91, 76, 45, 0.12);
+  --shadow-soft: 0 10px 30px rgba(91, 76, 45, 0.1);
+  color-scheme: light;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 203, 111, 0.3), transparent 25rem),
+    radial-gradient(circle at 92% 18%, rgba(116, 205, 155, 0.18), transparent 24rem),
+    var(--canvas);
+}
+
+.app-frame--morning .app-header {
+  border-bottom-color: rgba(24, 72, 59, 0.12);
+  background: rgba(255, 254, 250, 0.86);
+  box-shadow: 0 10px 30px rgba(91, 76, 45, 0.08);
+}
+
+.app-frame--morning .brand,
+.app-frame--morning .header-player strong,
+.app-frame--morning .notification-button,
+.app-frame--morning .icon-button {
+  color: var(--ink);
+}
+
+.app-frame--morning .brand > span:last-child > span {
+  color: var(--green-700);
+}
+
+.app-frame--morning .brand__sun,
+.app-frame--morning .header-player__avatar {
+  color: #fffdf4;
+  background: linear-gradient(145deg, #ffd978, #ed9a32);
+  box-shadow: 0 0 0 5px rgba(233, 149, 53, 0.14), 0 0 24px rgba(233, 149, 53, 0.2);
+}
+
+.app-frame--morning .header-player,
+.app-frame--morning .icon-button,
+.app-frame--morning .notification-button,
+.app-frame--morning .phase-switcher,
+.app-frame--morning .filter-tabs button,
+.app-frame--morning .task-card,
+.app-frame--morning input,
+.app-frame--morning select {
+  border-color: var(--line);
+  background: rgba(255, 254, 250, 0.82);
+}
+
+.app-frame--morning .bottom-nav {
+  border-color: rgba(24, 72, 59, 0.14);
+  background: rgba(255, 254, 250, 0.9);
+  box-shadow: 0 18px 55px rgba(91, 76, 45, 0.16);
+}
+
+.app-frame--morning .bottom-nav a {
+  color: #789088;
+}
+
+.app-frame--morning .bottom-nav a.router-link-active {
+  color: var(--green-700);
+  background: linear-gradient(180deg, rgba(66, 185, 123, 0.16), rgba(255, 203, 111, 0.16));
+  box-shadow: inset 0 0 0 1px rgba(66, 185, 123, 0.2);
+}
+
+.app-frame--morning .offline-banner {
+  color: #68430f;
+  background: rgba(255, 213, 126, 0.75);
+  border-bottom-color: rgba(233, 149, 53, 0.26);
+}
+
+.app-frame--morning .eyebrow,
+.app-frame--morning .section-heading > a,
+.app-frame--morning .section-heading > span {
+  color: var(--orange-500);
+  text-shadow: none;
+}
+
+.app-frame--morning .card,
+.app-frame--morning .time-card,
+.app-frame--morning .plan-tasks,
+.app-frame--morning .plan-summary .card,
+.app-frame--morning .inventory-card,
+.app-frame--morning .attack-panel .card,
+.app-frame--morning .settings-section,
+.app-frame--morning .settings-profile,
+.app-frame--morning .auth-card,
+.app-frame--morning .onboarding-card {
+  border-color: var(--line);
+  background: rgba(255, 254, 250, 0.88);
+  box-shadow: var(--shadow-soft);
+}
+
+.app-frame--morning .welcome-row h1,
+.app-frame--morning .page-title h1,
+.app-frame--morning .battle-header h1,
+.app-frame--morning .progress-ring strong,
+.app-frame--morning .forecast-card strong {
+  color: var(--ink);
+  text-shadow: none;
+}
+
+.app-frame--morning .notification-button > span {
+  border-color: var(--canvas);
+  color: #fffdf4;
+  background: var(--orange-500);
+}
+
+.app-frame--morning .phase-switcher {
+  box-shadow: 0 12px 28px rgba(91, 76, 45, 0.08);
+}
+
+.app-frame--morning .phase-switcher button.active,
+.app-frame--morning .filter-tabs button.active {
+  color: #fffdf4;
+  border-color: var(--green-700);
+  background: linear-gradient(135deg, #43b779, #23835e);
+  box-shadow: 0 5px 16px rgba(37, 131, 95, 0.18);
+}
+
+.app-frame--morning .hero-card {
+  border-color: rgba(233, 149, 53, 0.45);
+  background:
+    radial-gradient(circle at 78% 18%, rgba(255, 213, 126, 0.52), transparent 13rem),
+    radial-gradient(circle at 38% 120%, rgba(113, 211, 155, 0.34), transparent 18rem),
+    linear-gradient(135deg, #277b59 0%, #59b978 58%, #e9b75f 100%);
+  box-shadow: 0 24px 60px rgba(81, 102, 58, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.app-frame--morning .hero-card::before,
+.app-frame--morning .hero-card::after {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.app-frame--morning .quest-chip {
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #fffdf4;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.app-frame--morning .hero-card p {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.app-frame--morning .button,
+.app-frame--morning .button--hero {
+  border-color: var(--green-700);
+  color: #fffdf4;
+  background: linear-gradient(135deg, #43b779, #23835e);
+  box-shadow: 0 9px 22px rgba(37, 131, 95, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.app-frame--morning .button:hover:not(:disabled),
+.app-frame--morning .button--hero:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5ac98d, #2b966b);
+}
+
+.app-frame--morning .button--outline {
+  color: var(--green-700);
+  border-color: var(--line);
+  background: rgba(255, 254, 250, 0.8);
+  box-shadow: none;
+}
+
+.app-frame--morning .button--outline:hover:not(:disabled) {
+  border-color: rgba(37, 131, 95, 0.34);
+  background: var(--green-50);
+}
+
+.app-frame--morning .button--hero {
+  border-color: #fffdf4;
+  color: var(--green-900);
+  background: #fffdf4;
+  box-shadow: 0 12px 28px rgba(52, 92, 63, 0.2);
+}
+
+.app-frame--morning .button--hero:hover:not(:disabled) {
+  background: #fff4d4;
+}
+
+.app-frame--morning .sun-orbit {
+  border-color: rgba(255, 255, 255, 0.44);
+}
+
+.app-frame--morning .sun-orbit::after {
+  background: #ffd46d;
+  box-shadow: 0 0 32px rgba(255, 212, 109, 0.9);
+}
+
+.app-frame--morning .progress-ring {
+  background: conic-gradient(var(--green-500) var(--progress), var(--green-100) 0deg);
+  box-shadow: 0 0 26px rgba(66, 185, 123, 0.16);
+}
+
+.app-frame--morning .progress-ring__inner {
+  background: var(--surface);
+}
+
+.app-frame--morning .forecast-card {
+  border-color: rgba(74, 159, 192, 0.25);
+  background:
+    radial-gradient(circle at 80% 20%, rgba(119, 202, 231, 0.24), transparent 12rem),
+    linear-gradient(135deg, #fffefa, #e9f5fb);
+}
+
+.app-frame--morning .forecast-card strong {
+  color: var(--navy-900);
+}
+
+.app-frame--morning .battle-teaser {
+  border-color: rgba(37, 131, 95, 0.22);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(113, 211, 155, 0.32), transparent 18rem),
+    radial-gradient(circle at 90% 100%, rgba(255, 203, 111, 0.24), transparent 20rem),
+    linear-gradient(120deg, #edf8ef, #fff5df);
+}
+
+.app-frame--morning .battle-teaser h2,
+.app-frame--morning .battle-teaser p:last-child {
+  color: var(--ink);
+}
+
+.app-frame--morning .battle-teaser .eyebrow {
+  color: var(--green-700);
+}
+
+.app-frame--morning .hp-bar {
+  background: rgba(24, 72, 59, 0.12);
+}
+
+.app-frame--morning .button--battle {
+  border-color: #28779c;
+  background: linear-gradient(135deg, #56b7d2, #28779c);
+  box-shadow: 0 9px 24px rgba(40, 119, 156, 0.2);
+}
+
+.app-frame--morning .forecast-strip,
+.app-frame--morning .empty-state,
+.app-frame--morning .task-card--done,
+.app-frame--morning .add-task-panel,
+.app-frame--morning .device-checks li {
+  background: rgba(66, 185, 123, 0.08);
+  border-color: var(--line);
+}
+
+.app-frame--morning .task-card:hover {
+  border-color: rgba(37, 131, 95, 0.34);
+}
+
+.app-frame--morning input,
+.app-frame--morning select {
+  color: var(--ink);
+}
+
+.app-frame--morning input::placeholder {
+  color: #91a29b;
+}
+
+.app-frame--morning option {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.app-frame--morning .toast-notice {
+  border-color: rgba(66, 185, 123, 0.3);
+  color: var(--ink);
+  background: #e8f7ec;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-frame--morning,
+  .app-frame--morning * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Daytime palette: clear sky blue gives the daytime phase its own focus. */
+.app-frame--daytime {
+  --green-900: #15465c;
+  --green-800: #1b6680;
+  --green-700: #267f99;
+  --green-600: #349bb1;
+  --green-500: #4bb6c9;
+  --green-100: rgba(75, 182, 201, 0.14);
+  --green-50: rgba(75, 182, 201, 0.08);
+  --blue-700: #3c69af;
+  --blue-500: #5c83c4;
+  --blue-100: rgba(92, 131, 196, 0.14);
+  --orange-500: #e9a936;
+  --orange-100: rgba(233, 169, 54, 0.14);
+  --red-600: #cf5148;
+  --red-100: rgba(207, 81, 72, 0.12);
+  --ink: #183849;
+  --muted: #68818b;
+  --line: rgba(24, 56, 73, 0.14);
+  --surface: #ffffff;
+  --canvas: #eff8fc;
+  --shadow: 0 18px 55px rgba(48, 97, 125, 0.12);
+  --shadow-soft: 0 10px 30px rgba(48, 97, 125, 0.1);
+  color-scheme: light;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(130, 211, 232, 0.3), transparent 25rem),
+    radial-gradient(circle at 92% 18%, rgba(255, 212, 122, 0.22), transparent 24rem),
+    var(--canvas);
+}
+
+.app-frame--daytime .app-header {
+  border-bottom-color: rgba(24, 56, 73, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 30px rgba(48, 97, 125, 0.08);
+}
+
+.app-frame--daytime .bottom-nav {
+  border-color: rgba(24, 56, 73, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 55px rgba(48, 97, 125, 0.16);
+}
+
+.app-frame--daytime .bottom-nav a.router-link-active {
+  color: var(--green-700);
+  background: linear-gradient(180deg, rgba(75, 182, 201, 0.16), rgba(92, 131, 196, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(75, 182, 201, 0.22);
+}
+
+.app-frame--daytime .eyebrow,
+.app-frame--daytime .section-heading > a,
+.app-frame--daytime .section-heading > span {
+  color: var(--blue-700);
+}
+
+.app-frame--daytime .phase-switcher button.active,
+.app-frame--daytime .filter-tabs button.active {
+  color: #f8fdff;
+  border-color: var(--green-700);
+  background: linear-gradient(135deg, #52b8c8, #267f99);
+  box-shadow: 0 5px 16px rgba(38, 127, 153, 0.18);
+}
+
+.app-frame--daytime .hero-card {
+  border-color: rgba(75, 182, 201, 0.42);
+  background:
+    radial-gradient(circle at 78% 18%, rgba(255, 216, 126, 0.5), transparent 13rem),
+    radial-gradient(circle at 38% 120%, rgba(112, 202, 224, 0.34), transparent 18rem),
+    linear-gradient(135deg, #267f99 0%, #5bb7c7 58%, #e8b65c 100%);
+  box-shadow: 0 24px 60px rgba(48, 97, 125, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.app-frame--daytime .hero-card::before,
+.app-frame--daytime .hero-card::after {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.app-frame--daytime .button,
+.app-frame--daytime .button--hero {
+  border-color: var(--green-700);
+  color: #f8fdff;
+  background: linear-gradient(135deg, #4aaec0, #267f99);
+  box-shadow: 0 9px 22px rgba(38, 127, 153, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.app-frame--daytime .button:hover:not(:disabled),
+.app-frame--daytime .button--hero:hover:not(:disabled) {
+  background: linear-gradient(135deg, #64c5d3, #2f91aa);
+}
+
+.app-frame--daytime .button--outline {
+  color: var(--green-700);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.app-frame--daytime .button--outline:hover:not(:disabled) {
+  border-color: rgba(38, 127, 153, 0.34);
+  background: var(--green-50);
+}
+
+.app-frame--daytime .button--hero {
+  border-color: #f8fdff;
+  color: var(--green-900);
+  background: #f8fdff;
+  box-shadow: 0 12px 28px rgba(48, 97, 125, 0.2);
+}
+
+.app-frame--daytime .button--hero:hover:not(:disabled) {
+  background: #e5f5fa;
+}
+
+.app-frame--daytime .forecast-card {
+  border-color: rgba(92, 131, 196, 0.24);
+  background:
+    radial-gradient(circle at 80% 20%, rgba(130, 211, 232, 0.24), transparent 12rem),
+    linear-gradient(135deg, #ffffff, #eaf4ff);
+}
+
+.app-frame--daytime .battle-teaser {
+  border-color: rgba(38, 127, 153, 0.22);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(130, 211, 232, 0.32), transparent 18rem),
+    radial-gradient(circle at 90% 100%, rgba(255, 212, 122, 0.24), transparent 20rem),
+    linear-gradient(120deg, #e9f7fb, #eef2ff);
+}
+
+.app-frame--daytime .battle-teaser .eyebrow {
+  color: var(--green-700);
+}
+
+.app-frame--daytime .hp-bar {
+  background: rgba(24, 56, 73, 0.12);
+}
+
+.app-frame--daytime .forecast-strip,
+.app-frame--daytime .empty-state,
+.app-frame--daytime .task-card--done,
+.app-frame--daytime .add-task-panel,
+.app-frame--daytime .device-checks li {
+  background: rgba(75, 182, 201, 0.08);
+  border-color: var(--line);
+}
+
+.app-frame--daytime .task-card:hover {
+  border-color: rgba(38, 127, 153, 0.34);
+}
+
+.app-frame--daytime .toast-notice {
+  border-color: rgba(75, 182, 201, 0.3);
+  color: var(--ink);
+  background: #e7f6fb;
 }

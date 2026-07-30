@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import BottomNav from '@/components/BottomNav.vue'
@@ -9,8 +9,18 @@ import { useQuestStore } from '@/stores/quest'
 const route = useRoute()
 const router = useRouter()
 const store = useQuestStore()
+const now = ref(new Date())
+let phaseTimer: number | undefined
 
 const hideChrome = computed(() => Boolean(route.meta.hideChrome))
+const displayPhase = computed(() => {
+  if (store.phaseOverride) return store.phaseOverride
+
+  const hour = now.value.getHours()
+  if (hour < 9) return 'morning'
+  if (hour >= 20) return 'night'
+  return 'daytime'
+})
 
 function syncNetworkState() {
   store.setOffline(!navigator.onLine)
@@ -18,6 +28,9 @@ function syncNetworkState() {
 
 onMounted(() => {
   store.hydrate()
+  phaseTimer = window.setInterval(() => {
+    now.value = new Date()
+  }, 60_000)
   syncNetworkState()
   window.addEventListener('online', syncNetworkState)
   window.addEventListener('offline', syncNetworkState)
@@ -26,13 +39,20 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (phaseTimer) window.clearInterval(phaseTimer)
   window.removeEventListener('online', syncNetworkState)
   window.removeEventListener('offline', syncNetworkState)
 })
 </script>
 
 <template>
-  <div class="app-frame" :class="{ 'app-frame--immersive': hideChrome }">
+  <div
+    class="app-frame"
+    :class="[
+      `app-frame--${displayPhase}`,
+      { 'app-frame--morning': displayPhase !== 'night', 'app-frame--immersive': hideChrome },
+    ]"
+  >
     <div v-if="store.isOffline" class="offline-banner" role="status">
       オフラインです。操作は端末に保持され、再接続後に同期されます。
     </div>
