@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ProgressRing from '@/components/ProgressRing.vue'
-import { formatMinutes, minutesUntilClock } from '@/domain/quest'
+import { formatMinutes, minutesUntilClock, phaseFromHour } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
 
 const store = useQuestStore()
@@ -12,10 +12,7 @@ let timerId: number | undefined
 
 const phase = computed(() => {
   if (store.phaseOverride) return store.phaseOverride
-  const hour = new Date().getHours()
-  if (hour < 9) return 'morning'
-  if (hour >= 20) return 'night'
-  return 'daytime'
+  return phaseFromHour(new Date(store.clockTick).getHours())
 })
 
 const phaseLabel = {
@@ -23,6 +20,15 @@ const phaseLabel = {
   morning: '朝',
   daytime: '日中',
 }
+
+const greeting = computed(() => {
+  const greetings = {
+    night: 'こんばんは',
+    morning: 'おはよう',
+    daytime: 'こんにちは',
+  }
+  return greetings[phase.value]
+})
 
 const heroMessage = computed(() => {
   if (store.progress.percentage >= 80) return '今日のノルマ達成！ 夜のバトルへ行こう。'
@@ -72,7 +78,7 @@ async function openNextTask() {
     <section class="welcome-row">
       <div>
         <p class="eyebrow">{{ new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' }) }}</p>
-        <h1>おはよう、{{ store.userName }}さん</h1>
+        <h1>{{ greeting }}、{{ store.userName }}さん</h1>
       </div>
       <button class="notification-button" type="button" aria-label="通知履歴">
         ♢
