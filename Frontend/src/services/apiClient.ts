@@ -1,8 +1,11 @@
+import type { DailyPlan, GameState, TaskStatus } from '../domain/types'
+
 export interface BackendTask {
   id: number
-  user_id: number
+  user_id?: number
   title: string
   category: string | null
+  status?: TaskStatus
   estimated_minutes: number
   is_completed: boolean
   recommended_qr: string | null
@@ -35,16 +38,28 @@ export interface TaskAnalysisResponse {
   note?: string
 }
 
+interface ApiErrorBody {
+  detail?: unknown
+  error?: {
+    code?: string
+    message?: string
+    requestId?: string
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
     public readonly code = 'INTERNAL_ERROR',
+    public readonly requestId?: string,
   ) {
     super(message)
     this.name = 'ApiError'
   }
 }
+
+let accessToken: string | null = null
 
 function normalizeBaseUrl(value: string | undefined): string | null {
   const candidate = value?.trim()
@@ -71,9 +86,12 @@ function normalizeBaseUrl(value: string | undefined): string | null {
   return url.toString().replace(/\/+$/, '')
 }
 
-function errorForStatus(status: number): ApiError {
+function errorForStatus(status: number, body: ApiErrorBody): ApiError {
   if (status === 400 || status === 422) {
     return new ApiError('入力内容を確認してください。', status, 'VALIDATION_ERROR')
+  }
+  if (status === 401 || status === 403) {
+    return new ApiError('認証または権限を確認してください。', status, 'AUTH_ERROR')
   }
   if (status === 404) {
     return new ApiError('対象のデータが見つかりません。', status, 'NOT_FOUND')
@@ -85,7 +103,12 @@ function errorForStatus(status: number): ApiError {
       'SERVER_ERROR',
     )
   }
-  return new ApiError('通信に失敗しました。もう一度お試しください。', status)
+  return new ApiError(
+    body.error?.message ?? '通信に失敗しました。もう一度お試しください。',
+    status,
+    body.error?.code,
+    body.error?.requestId,
+  )
 }
 
 export function createApiClient(
@@ -100,7 +123,10 @@ export function createApiClient(
     }
 
     const headers = new Headers(init.headers)
-    if (init.body !== undefined) headers.set('Content-Type', 'application/json')
+    if (init.body !== undefined && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
 
     let response: Response
     try {
@@ -117,7 +143,10 @@ export function createApiClient(
       )
     }
 
-    if (!response.ok) throw errorForStatus(response.status)
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as ApiErrorBody
+      throw errorForStatus(response.status, body)
+    }
     if (response.status === 204) return undefined as T
 
     try {
@@ -129,14 +158,26 @@ export function createApiClient(
 
   return {
     health: () => request<{ message: string }>('/'),
+    login: (email: string, password: string) =>
+      request<{ accessToken: string; user: { id: number; name: string; email: string | null } }>(
+        '/auth/login',
+        { method: 'POST', body: JSON.stringify({ email, password }) },
+      ),
+    register: (name: string, email: string, password: string) =>
+      request<{ accessToken: string; user: { id: number; name: string; email: string | null } }>(
+        '/auth/register',
+        { method: 'POST', body: JSON.stringify({ name, email, password }) },
+      ),
     createTask: (task: CreateBackendTaskInput) =>
       request<BackendTask>('/tasks', {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify(task),
       }),
     completeTask: (taskId: number) =>
       request<TaskCompletionResponse>(`/game/tasks/${taskId}/complete`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
       }),
     verifyQr: (scannedQrCode: string, targetQrCode: string) =>
       request<QrVerificationResponse>('/qr/verify', {
@@ -151,8 +192,45 @@ export function createApiClient(
         method: 'POST',
         body: JSON.stringify({ task_title: taskTitle }),
       }),
+    getPlan: (localDate: string) => request<DailyPlan>(`/plans/${encodeURIComponent(localDate)}`),
+    savePlan: (plan: DailyPlan) =>
+      request<DailyPlan>(`/plans/${encodeURIComponent(plan.localDate)}`, {
+        method: 'PUT',
+        body: JSON.stringify(plan),
+      }),
+    updateTaskStatus: (
+      taskId: string,
+      status: TaskStatus,
+      version: number,
+      extras?: Record<string, unknown>,
+    ) =>
+      request<BackendTask>(`/tasks/${encodeURIComponent(taskId)}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status,
+          version,
+          clientEventId: crypto.randomUUID(),
+          ...(extras ?? {}),
+        }),
+      }),
+    deleteTask: (taskId: string) =>
+      request<{ status: string }>(`/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'DELETE',
+      }),
+    getGameState: () => request<Partial<GameState>>('/game-state'),
+    battle: (itemIds: string[], clientEventId: string) =>
+      request<{ damage: number; enemyHp: number }>('/battles', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': clientEventId },
+        body: JSON.stringify({ itemIds, clientEventId }),
+      }),
   }
 }
 
 export const isBackendConfigured = Boolean(import.meta.env.VITE_API_BASE_URL?.trim())
 export const apiClient = createApiClient(import.meta.env.VITE_API_BASE_URL)
+
+export function setAccessToken(token: string | null): void {
+  // Keep the short-lived access token in memory; do not persist it in localStorage.
+  accessToken = token
+}

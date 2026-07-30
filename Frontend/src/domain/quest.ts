@@ -41,6 +41,29 @@ export function forecastDay(tasks: QuestTask[], minutesUntilSleep: number): Fore
   }
 }
 
+export function minutesUntilClock(clock: string, now = new Date()): number {
+  const values = clock.split(':').map((value) => Number(value))
+  const hours = values[0] ?? Number.NaN
+  const minutes = values[1] ?? Number.NaN
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0
+
+  const target = new Date(now)
+  target.setHours(hours, minutes, 0, 0)
+
+  const diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000)
+  return Math.max(0, diffMinutes)
+}
+
+export function formatMinutes(minutes: number): string {
+  const safeMinutes = Math.max(0, Math.floor(minutes))
+  const hours = Math.floor(safeMinutes / 60)
+  const mins = safeMinutes % 60
+
+  if (hours <= 0) return `${mins}分`
+  if (mins === 0) return `${hours}時間`
+  return `${hours}時間${mins}分`
+}
+
 export function streakMultiplier(streakDays: number): number {
   if (streakDays >= 14) return 1.5
   if (streakDays >= 7) return 1.25

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import TaskCard from '@/components/TaskCard.vue'
+import { formatMinutes, minutesUntilClock } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
-import type { TaskStatus } from '@/domain/types'
+import type { QuestTask, TaskStatus } from '@/domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
 const filter = ref<'ALL' | TaskStatus>('ALL')
+const now = ref(new Date())
+let timerId: number | undefined
 
 const filters: { value: 'ALL' | TaskStatus; label: string }[] = [
   { value: 'ALL', label: 'すべて' },
@@ -19,18 +22,33 @@ const filters: { value: 'ALL' | TaskStatus; label: string }[] = [
 const filteredTasks = computed(() =>
   filter.value === 'ALL'
     ? store.tasks
-    : store.tasks.filter((task) => task.status === filter.value),
+    : store.tasks.filter((task: QuestTask) => task.status === filter.value),
 )
 
-function handleStart(taskId: string) {
-  const task = store.tasks.find((item) => item.id === taskId)
+const bedtimeCountdown = computed(() => {
+  const remainingMinutes = minutesUntilClock(store.plan.sleepTime, now.value)
+  return remainingMinutes > 0 ? `就寝まであと${formatMinutes(remainingMinutes)}` : '就寝時刻です'
+})
+
+onMounted(() => {
+  timerId = window.setInterval(() => {
+    now.value = new Date()
+  }, 60_000)
+})
+
+onBeforeUnmount(() => {
+  if (timerId) window.clearInterval(timerId)
+})
+
+async function handleStart(taskId: string) {
+  const task = store.tasks.find((item: QuestTask) => item.id === taskId)
   if (!task) return
-  if (task.requiredPlace === 'NONE') store.startTask(taskId)
+  if (task.requiredPlace === 'NONE') await store.startTask(taskId)
   else void router.push({ path: '/scanner', query: { taskId } })
 }
 
-function handleComplete(taskId: string) {
-  void store.completeTask(taskId)
+async function handleComplete(taskId: string) {
+  await store.completeTask(taskId)
 }
 </script>
 
@@ -51,7 +69,7 @@ function handleComplete(taskId: string) {
     <section class="forecast-strip" :data-risk="store.forecast.riskLevel">
       <span class="forecast-strip__icon" aria-hidden="true">◷</span>
       <div>
-        <strong>就寝見込み 23:45</strong>
+        <strong>{{ bedtimeCountdown }}</strong>
         <p>残り{{ store.forecast.remainingMinutes }}分 / 使える{{ store.forecast.effectiveAvailableMinutes }}分</p>
       </div>
       <span class="risk-badge" :data-risk="store.forecast.riskLevel">{{ store.forecast.riskLevel }}</span>

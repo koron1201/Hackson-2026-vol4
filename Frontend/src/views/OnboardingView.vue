@@ -9,10 +9,10 @@ const step = ref(1)
 const wakeTime = ref('07:00')
 const sleepTime = ref('23:30')
 
-function next() {
+async function next() {
   if (step.value < 3) step.value += 1
   else {
-    store.savePlan(wakeTime.value, sleepTime.value)
+    await store.savePlan(wakeTime.value, sleepTime.value)
     store.setOnboardingCompleted(true)
     void router.replace('/home')
   }

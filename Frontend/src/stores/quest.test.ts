@@ -1,19 +1,46 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useQuestStore } from './quest'
+import type { QuestTask } from '../domain/types'
+
+vi.mock('@/services/apiClient', () => ({
+  isBackendConfigured: false,
+  apiClient: {
+    updateTaskStatus: vi.fn(async (taskId: string, status: string) => ({
+      id: Number(taskId),
+      title: '同期タスク',
+      category: 'OTHER',
+      status,
+      estimated_minutes: 15,
+      is_completed: status === 'DONE',
+      recommended_qr: null,
+    })),
+    savePlan: vi.fn(async (plan: unknown) => plan),
+    deleteTask: vi.fn(async () => ({ status: 'deleted' })),
+    getPlan: vi.fn(async () => {
+      throw new Error('no server')
+    }),
+    getGameState: vi.fn(async () => {
+      throw new Error('no server')
+    }),
+    battle: vi.fn(async () => {
+      throw new Error('no server')
+    }),
+  },
+}))
 
 describe('quest store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  it('QR成功でTODOをSTARTEDにし、報酬候補を1件だけ作る', () => {
+  it('QR成功でTODOをSTARTEDにし、報酬候補を1件だけ作る', async () => {
     const store = useQuestStore()
-    const task = store.tasks.find((item) => item.status === 'TODO')
+    const task = store.tasks.find((item: QuestTask) => item.status === 'TODO')
 
     expect(task).toBeDefined()
-    const firstResult = store.startTask(task!.id)
-    const secondResult = store.startTask(task!.id)
+    const firstResult = await store.startTask(task!.id)
+    const secondResult = await store.startTask(task!.id)
 
     expect(firstResult).toBe(true)
     expect(secondResult).toBe(false)
@@ -25,7 +52,7 @@ describe('quest store', () => {
     const store = useQuestStore()
     const task = store.tasks.find((item) => item.status === 'TODO')!
     const initialCoins = store.game.coins
-    store.startTask(task.id)
+    await store.startTask(task.id)
 
     await expect(store.completeTask(task.id)).resolves.toBe(true)
     await expect(store.completeTask(task.id)).resolves.toBe(false)
@@ -35,13 +62,13 @@ describe('quest store', () => {
     expect(store.game.coins).toBe(initialCoins + task.weight * 20)
   })
 
-  it('攻撃は選択アイテムを消費し、同じイベントIDを二重適用しない', () => {
+  it('攻撃は選択アイテムを消費し、同じイベントIDを二重適用しない', async () => {
     const store = useQuestStore()
     const availableItem = store.game.inventory.find((item) => item.state === 'AVAILABLE')!
     const initialHp = store.game.enemyHp
 
-    const first = store.attack([availableItem.id], 'event-1')
-    const second = store.attack([availableItem.id], 'event-1')
+    const first = await store.attack([availableItem.id], 'event-1')
+    const second = await store.attack([availableItem.id], 'event-1')
 
     expect(first.damage).toBeGreaterThan(0)
     expect(second).toEqual(first)
@@ -60,11 +87,11 @@ describe('quest store', () => {
     expect(store.availableItems).toHaveLength(1)
   })
 
-  it('存在しないまたは着手済みタスクは開始しない', () => {
+  it('存在しないまたは着手済みタスクは開始しない', async () => {
     const store = useQuestStore()
 
-    expect(store.startTask('missing')).toBe(false)
-    expect(store.startTask('habit-breakfast')).toBe(false)
+    expect(await store.startTask('missing')).toBe(false)
+    expect(await store.startTask('habit-breakfast')).toBe(false)
   })
 
   it('未着手や存在しないタスクは完了しない', async () => {
@@ -92,32 +119,32 @@ describe('quest store', () => {
     })
   })
 
-  it('未完了タスクだけ削除できる', () => {
+  it('未完了タスクだけ削除できる', async () => {
     const store = useQuestStore()
     const initialCount = store.tasks.length
 
-    store.removeTask('daily-walk')
-    store.removeTask('habit-brush')
-    store.removeTask('missing')
+    await store.removeTask('daily-walk')
+    await store.removeTask('habit-brush')
+    await store.removeTask('missing')
 
     expect(store.tasks).toHaveLength(initialCount - 1)
     expect(store.tasks.some((task) => task.id === 'habit-brush')).toBe(true)
   })
 
-  it('計画時刻を保存してversionを進める', () => {
+  it('計画時刻を保存してversionを進める', async () => {
     const store = useQuestStore()
 
-    store.savePlan('06:30', '23:00')
+    await store.savePlan('06:30', '23:00')
 
     expect(store.plan).toMatchObject({ wakeTime: '06:30', sleepTime: '23:00', version: 2 })
     expect(store.toast).toContain('Webアラーム')
   })
 
-  it('アイテム未選択の攻撃ではHPを減らさない', () => {
+  it('アイテム未選択の攻撃ではHPを減らさない', async () => {
     const store = useQuestStore()
     const initialHp = store.game.enemyHp
 
-    expect(store.attack([], 'empty-event')).toEqual({ damage: 0, enemyHp: initialHp })
+    await expect(store.attack([], 'empty-event')).resolves.toEqual({ damage: 0, enemyHp: initialHp })
     expect(store.game.enemyHp).toBe(initialHp)
   })
 
@@ -138,26 +165,26 @@ describe('quest store', () => {
     expect(store.toast).toBe('')
   })
 
-  it('保存済み状態を復元し、不正JSONは破棄する', () => {
+  it('保存済み状態を復元し、不正JSONは破棄する', async () => {
     const store = useQuestStore()
-    store.savePlan('06:45', '22:45')
+    await store.savePlan('06:45', '22:45')
     const saved = localStorage.getItem('morningquest-demo')
 
     setActivePinia(createPinia())
     const restored = useQuestStore()
-    restored.hydrate()
+    await restored.hydrate()
     expect(restored.plan.wakeTime).toBe('06:45')
 
     localStorage.setItem('morningquest-demo', '{broken')
-    restored.hydrate()
+    await restored.hydrate()
     expect(localStorage.getItem('morningquest-demo')).toBeNull()
     expect(saved).not.toBeNull()
   })
 
-  it('未保存時の復元は何も変更せず、リセットで初期状態に戻す', () => {
+  it('未保存時の復元は何も変更せず、リセットで初期状態に戻す', async () => {
     const store = useQuestStore()
-    store.hydrate()
-    store.savePlan('05:30', '22:00')
+    await store.hydrate()
+    await store.savePlan('05:30', '22:00')
     store.resetDemo()
 
     expect(store.plan.wakeTime).toBe('07:00')

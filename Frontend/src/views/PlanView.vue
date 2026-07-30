@@ -13,6 +13,7 @@ const newTask = ref('')
 const newTaskPlace = ref<PlaceType>('NONE')
 const errors = ref<string[]>([])
 const addingTask = ref(false)
+const aiSuggested = ref(false)
 
 const totalMinutes = computed(() =>
   store.tasks.reduce((total, task) => total + task.estimatedMinutes, 0),
@@ -30,6 +31,7 @@ async function addTask() {
     await store.addTask(title, newTaskPlace.value)
     newTask.value = ''
     newTaskPlace.value = 'NONE'
+    aiSuggested.value = false
   } catch {
     errors.value = ['タスクを登録できませんでした。通信状態を確認して再試行してください。']
   } finally {
@@ -37,7 +39,12 @@ async function addTask() {
   }
 }
 
-function save() {
+function suggestWithRules() {
+  aiSuggested.value = true
+  errors.value = []
+}
+
+async function save() {
   errors.value = validatePlanDraft({
     wakeTime: wakeTime.value,
     sleepTime: sleepTime.value,
@@ -45,8 +52,15 @@ function save() {
   })
   if (errors.value.length > 0) return
 
-  store.savePlan(wakeTime.value, sleepTime.value)
+  await store.savePlan(wakeTime.value, sleepTime.value)
   void router.push('/home')
+}
+
+async function removeTask(taskId: string) {
+  const task = store.tasks.find((item) => item.id === taskId)
+  const title = task?.title ?? 'このタスク'
+  if (!confirm(`${title} を削除してよいですか？`)) return
+  await store.removeTask(taskId)
 }
 </script>
 
@@ -89,10 +103,12 @@ function save() {
               <p class="eyebrow">QUESTS</p>
               <h2>明日のクエスト</h2>
             </div>
-            <span>{{ store.backendEnabled ? 'AI分析＋API登録' : '端末内デモ' }}</span>
+            <button class="text-button" type="button" @click="suggestWithRules">
+              ✦ AIでまとめて提案
+            </button>
           </div>
 
-          <div class="plan-task-row" v-for="task in store.tasks" :key="task.id">
+          <div v-for="task in store.tasks" :key="task.id" class="plan-task-row">
             <span class="drag-handle" aria-hidden="true">⠿</span>
             <div>
               <strong>{{ task.title }}</strong>
@@ -100,17 +116,9 @@ function save() {
                 {{ task.estimatedMinutes }}分 · ★{{ task.weight }} ·
                 {{ task.requiredPlace === 'NONE' ? 'QRなし' : task.requiredPlace }}
               </span>
-              <small v-if="store.backendEnabled && task.taskType === 'DAILY'">
-                バックエンド登録済み · AI分類は保存前に正規化しています
-              </small>
+              <small v-if="aiSuggested && task.taskType === 'DAILY'">AI候補 · 保存前に確認してください</small>
             </div>
-            <button
-              type="button"
-              class="icon-button"
-              :disabled="task.status === 'DONE'"
-              :aria-label="`${task.title}を削除`"
-              @click="store.removeTask(task.id)"
-            >
+            <button type="button" class="icon-button" :aria-label="`${task.title}を削除`" @click="removeTask(task.id)">
               ×
             </button>
           </div>
@@ -129,12 +137,7 @@ function save() {
                 <option value="ENTRANCE">玄関</option>
               </select>
             </label>
-            <button
-              class="button button--outline"
-              type="button"
-              :disabled="addingTask"
-              @click="addTask"
-            >
+            <button class="button button--outline" type="button" :disabled="addingTask" @click="addTask">
               {{ addingTask ? '登録中…' : store.backendEnabled ? '✦ AI分析して追加' : '＋ 追加する' }}
             </button>
           </div>
@@ -160,7 +163,7 @@ function save() {
         </ul>
         <button class="button button--wide" type="submit">計画を保存してアラーム設定</button>
         <p class="helper-text">
-          Webアラームと計画時刻は端末内に保存します。現在のバックエンドにはプラン保存APIがありません。
+          {{ store.backendEnabled ? '計画はバックエンドにも保存します。' : 'Webアラームと計画時刻は端末内に保存します。' }}
         </p>
       </aside>
     </form>

@@ -4,41 +4,61 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useQuestStore } from '@/stores/quest'
 import LoginView from './LoginView.vue'
 
-const replace = vi.fn()
+const mocks = vi.hoisted(() => ({
+  replace: vi.fn(),
+  login: vi.fn(),
+  setAccessToken: vi.fn(),
+}))
+const { replace, login, setAccessToken } = mocks
 
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ replace }),
+  useRouter: () => ({ replace: mocks.replace }),
+}))
+
+vi.mock('@/services/apiClient', () => ({
+  isBackendConfigured: false,
+  apiClient: { login: mocks.login },
+  setAccessToken: mocks.setAccessToken,
 }))
 
 describe('LoginView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     replace.mockReset()
+    login.mockReset()
+    setAccessToken.mockReset()
   })
 
-  it('バックエンドモードでは接続確認後にホームへ進む', async () => {
+  it('バックエンドモードではログイン成功後にホームへ進む', async () => {
+    login.mockResolvedValue({
+      accessToken: 'test-token',
+      user: { id: 1, name: 'ゆうき', email: 'you@example.com' },
+    })
     const store = useQuestStore()
     store.backendEnabled = true
     store.isAuthenticated = false
-    const connectBackend = vi.spyOn(store, 'connectBackend').mockResolvedValue(true)
     const wrapper = mount(LoginView)
 
-    expect(wrapper.text()).toContain('バックエンドへ接続')
-    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    await wrapper.get('input[type="email"]').setValue('you@example.com')
+    await wrapper.get('input[type="password"]').setValue('password123')
+    await wrapper.get('form').trigger('submit')
 
-    await wrapper.get('button[data-testid="connect-backend"]').trigger('click')
     await vi.waitFor(() => expect(replace).toHaveBeenCalledWith('/home'))
-    expect(connectBackend).toHaveBeenCalledOnce()
+    expect(login).toHaveBeenCalledWith('you@example.com', 'password123')
+    expect(setAccessToken).toHaveBeenCalledWith('test-token')
   })
 
-  it('接続失敗時はエラーを表示して遷移しない', async () => {
+  it('入力が短い場合はAPIへ送信せずエラーを表示する', async () => {
     const store = useQuestStore()
     store.backendEnabled = true
-    vi.spyOn(store, 'connectBackend').mockResolvedValue(false)
     const wrapper = mount(LoginView)
 
-    await wrapper.get('button[data-testid="connect-backend"]').trigger('click')
-    await vi.waitFor(() => expect(wrapper.get('[role="alert"]').text()).toContain('接続できません'))
+    await wrapper.get('input[type="email"]').setValue('you@example.com')
+    await wrapper.get('input[type="password"]').setValue('short')
+    await wrapper.get('form').trigger('submit')
+
+    expect(login).not.toHaveBeenCalled()
+    expect(wrapper.get('[role="alert"]').text()).toContain('8文字以上')
     expect(replace).not.toHaveBeenCalled()
   })
 })

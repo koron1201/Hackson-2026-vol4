@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { QuestTask } from '@/domain/types'
+import type { QuestTask } from '../domain/types'
 
 const props = defineProps<{ task: QuestTask }>()
 const emit = defineEmits<{

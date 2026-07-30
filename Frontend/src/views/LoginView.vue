@@ -1,26 +1,39 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { apiClient, setAccessToken } from '@/services/apiClient'
 import { useQuestStore } from '@/stores/quest'
 
 const router = useRouter()
 const store = useQuestStore()
+const email = ref('')
+const password = ref('')
 const error = ref('')
 const submitting = ref(false)
 
-async function connectBackend() {
+async function login() {
   error.value = ''
-  submitting.value = true
-  const connected = await store.connectBackend()
-  submitting.value = false
-  if (!connected) {
-    error.value = 'バックエンドへ接続できません。起動状態と接続先を確認してください。'
+  if (!email.value.includes('@') || password.value.length < 8) {
+    error.value = 'メールアドレスと8文字以上のパスワードを入力してください。'
     return
   }
-  void router.replace('/home')
+
+  submitting.value = true
+  try {
+    const response = await apiClient.login(email.value, password.value)
+    setAccessToken(response.accessToken)
+    store.setUserName(response.user.name)
+    store.setAuthenticated(true)
+    void router.replace(store.onboardingCompleted ? '/home' : '/onboarding')
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : 'ログインに失敗しました。'
+  } finally {
+    submitting.value = false
+  }
 }
 
 function useDemo() {
+  store.setUserName('ゆうき')
   store.setAuthenticated(true)
   void router.replace('/home')
 }
@@ -40,22 +53,23 @@ function useDemo() {
     </section>
     <section class="auth-card">
       <template v-if="store.backendEnabled">
-        <p class="eyebrow">API CONNECTION</p>
-        <h2>バックエンドへ接続</h2>
-        <p>バックエンドの起動を確認してから、クエスト管理を始めます。</p>
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <button
-          class="button button--wide"
-          type="button"
-          data-testid="connect-backend"
-          :disabled="submitting"
-          @click="connectBackend"
-        >
-          {{ submitting ? '接続確認中…' : '接続して始める' }}
-        </button>
-        <p class="auth-note">
-          現在のバックエンドには認証APIがないため、固定ユーザーID 1を使用します。
-        </p>
+        <p class="eyebrow">WELCOME BACK</p>
+        <h2>冒険を続ける</h2>
+        <form @submit.prevent="login">
+          <label>
+            <span>メールアドレス</span>
+            <input v-model.trim="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+          </label>
+          <label>
+            <span>パスワード</span>
+            <input v-model="password" type="password" autocomplete="current-password" minlength="8" placeholder="8文字以上" required />
+          </label>
+          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+          <button class="button button--wide" type="submit" :disabled="submitting">
+            {{ submitting ? '確認中…' : 'ログイン' }}
+          </button>
+        </form>
+        <p class="auth-note">認証トークンはブラウザの永続ストレージへ保存しません。</p>
       </template>
       <template v-else>
         <p class="eyebrow">LOCAL DEMO</p>
@@ -64,7 +78,7 @@ function useDemo() {
         <button class="button button--outline button--wide" type="button" @click="useDemo">
           デモモードで始める
         </button>
-        <p class="auth-note">入力した認証情報を装うフォームは使用しません。</p>
+        <p class="auth-note">入力した認証情報を保存・送信しません。</p>
       </template>
     </section>
   </div>

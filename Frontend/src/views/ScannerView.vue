@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
 import { useQuestStore } from '@/stores/quest'
+import type { QuestTask } from '@/domain/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,7 +15,7 @@ const scannedOnce = ref(false)
 let controls: IScannerControls | undefined
 
 const taskId = computed(() => String(route.query.taskId ?? ''))
-const task = computed(() => store.tasks.find((item) => item.id === taskId.value))
+const task = computed(() => store.tasks.find((item: QuestTask) => item.id === taskId.value))
 const placeLabel = computed(() => {
   const labels = { WASHROOM: '洗面所', PC: 'PC前', ENTRANCE: '玄関', NONE: '指定場所' }
   return task.value ? labels[task.value.requiredPlace] : '指定場所'
@@ -29,9 +30,7 @@ async function startCamera() {
 
   status.value = 'starting'
   errorMessage.value = ''
-  const reader = new BrowserQRCodeReader(undefined, {
-    delayBetweenScanAttempts: 180,
-  })
+  const reader = new BrowserQRCodeReader(undefined, { delayBetweenScanAttempts: 180 })
 
   try {
     const devices = await BrowserQRCodeReader.listVideoInputDevices()
@@ -58,7 +57,7 @@ async function verify(rawToken: string) {
   if (!task.value || scannedOnce.value) return
   scannedOnce.value = true
 
-  // 生のQR値はログ・ストレージへ保存しない。APIモードでは照合時だけ送信する。
+  // 生のQR値はログ・ストレージへ保存せず、照合処理へ一時的に渡すだけにする。
   const verified = await store.verifyQrForTask(rawToken, task.value.id)
   if (!verified) {
     scannedOnce.value = false
@@ -98,10 +97,7 @@ onBeforeUnmount(() => controls?.stop())
 
     <div class="camera-stage">
       <video ref="videoElement" muted playsinline></video>
-      <div class="scan-frame" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-        <span></span>
-      </div>
+      <div class="scan-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span></span></div>
       <div v-if="status === 'starting'" class="camera-loading">カメラを準備中…</div>
       <div v-if="status === 'success'" class="scan-success" role="status">
         <span aria-hidden="true">✓</span>
