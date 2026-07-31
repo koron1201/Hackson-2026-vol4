@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import os
 import qrcode
@@ -14,8 +14,7 @@ from models import Task
 router = APIRouter(prefix="/qr", tags=["QR Verification (BE-2)"])
 
 class QRCheckRequest(BaseModel):
-    scanned_qr_code: str
-    # target_qr_code: str
+    scanned_qr_code: str = Field(min_length=1, max_length=128)
 
 class QRCreateRequest(BaseModel):
     qr_name: str
@@ -28,7 +27,8 @@ def create_qr(req: QRCreateRequest):
     img.save(file_path)
     return {
         "message": "QRコードを生成しました",
-        "file_name": f"{req.qr_name}.png"
+        "file_name": f"{req.qr_name}.png",
+        "url": f"/qr/{req.qr_name}"
     }
 
 @router.get("/{qr_name}")
@@ -48,28 +48,27 @@ def verify_qr(
 ):
     # QRコードに対応するタスクを検索
     statement = select(Task).where(
-        Task.recommended_qr == req.scanned_qr_code
+        Task.recommended_qr == req.scanned_qr_code,
+        Task.is_completed == False
     )
     tasks = session.exec(statement).all()
-    # 対応するタスクがない場合
+
     if not tasks:
         return {
             "success": False,
             "alarm_released": False,
-            "message": "このQRコードに対応するタスクはありません。"
+            "message": "開始できるタスクはありません。"
         }
-    # タスクを開始状態に変更（未完了のものだけ）
     started_tasks = []
     for task in tasks:
-        if not task.is_completed:
-            task.status = "IN_PROGRESS"
-            session.add(task)
-            started_tasks.append({
-                "id": task.id,
-                "title": task.title,
-                "category": task.category,
-                "estimated_minutes": task.estimated_minutes
-            })
+        task.status = "STARTED"
+        session.add(task)
+        started_tasks.append({
+            "id": task.id,
+            "title": task.title,
+            "category": task.category,
+            "estimated_minutes": task.estimated_minutes
+        })
     session.commit()
     return {
         "success": True,
@@ -78,17 +77,22 @@ def verify_qr(
         "tasks": started_tasks
     }
 
-
 # compatibility endpoint for frontend /scans/verify
+class ScanVerifyRequest(BaseModel):
+    rawToken: str = Field(min_length=1, max_length=128)
+    taskId: str = Field(min_length=1, max_length=64)
+    purpose: str = Field(min_length=1, max_length=32)
+    targetQrCode: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 @router.post('/scans/verify')
-def verify_scan(payload: dict):
-    # frontend sends: rawToken, taskId, purpose, scannedAt, clientEventId
-    raw = payload.get('rawToken') or payload.get('scanned_qr_code')
-    task_id = payload.get('taskId')
-    # simple logic: accept if raw is non-empty
-    verified = bool(raw)
+def verify_scan(payload: ScanVerifyRequest):
+    # A non-empty QR value alone is not proof of a valid scan.
+    raw = payload.rawToken.strip()
+    task_id = payload.taskId
+    verified = bool(payload.targetQrCode) and raw == payload.targetQrCode.strip()
     # return a minimal task object when verified
     task = None
     if task_id:
         task = { 'id': task_id, 'title': 'タスク', 'status': 'STARTED' }
-    return { 'verified': verified, 'task': task }
+    return {'verified': verified, 'task': task if verified else None}

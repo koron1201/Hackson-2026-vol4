@@ -43,7 +43,7 @@ async function attack() {
       <div class="player-level">
         <span>Lv.</span>
         <strong>{{ store.game.level }}</strong>
-        <small>XP {{ store.game.xp.toLocaleString() }}</small>
+        <small>コイン {{ store.game.coins.toLocaleString() }}</small>
       </div>
     </section>
 
@@ -93,6 +93,7 @@ async function attack() {
             <em>{{ item.state === 'PENDING' ? 'タスク完了で解放' : item.state === 'CONSUMED' ? '使用済み' : '選択可能' }}</em>
           </label>
         </div>
+        <p v-else class="empty-state">使用可能なアイテムはありません。タスクを完了すると獲得できます。</p>
       </section>
 
       <aside class="attack-panel">

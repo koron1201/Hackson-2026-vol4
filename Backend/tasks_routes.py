@@ -1,6 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session  # sqlalchemy.orm から sqlmodel に変更
 
 # database.py から get_session をインポートするように修正
@@ -97,9 +97,9 @@ def delete_task(task_id: str, session: Session = Depends(get_session)):
 # 1. リクエスト用のPydanticモデル（idを含めない）
 class TaskCreate(BaseModel):
     user_id: Optional[int] = 1
-    title: str
-    category: Optional[str] = None
-    estimated_minutes: int = 15
+    title: str = Field(min_length=1, max_length=120)
+    category: Optional[str] = Field(default=None, max_length=32)
+    estimated_minutes: int = Field(default=15, ge=1, le=1440)
     is_completed: bool = False
     recommended_qr: Optional[str] = None
 

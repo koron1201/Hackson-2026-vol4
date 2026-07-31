@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { QuestTask } from '../domain/types'
 import { useRouter } from 'vue-router'
 import TaskCard from '@/components/TaskCard.vue'
 import { formatMinutes, minutesUntilClock } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
-import type { TaskStatus } from '../domain/types'
+import type { QuestTask, TaskStatus } from '@/domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
@@ -92,7 +91,7 @@ async function handleComplete(taskId: string) {
     </div>
 
     <section class="task-list" aria-live="polite">
-        <TaskCard
+      <TaskCard
         v-for="task in filteredTasks"
         :key="task.id"
         :task="task"
