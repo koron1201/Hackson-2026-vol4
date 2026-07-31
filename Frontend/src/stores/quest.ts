@@ -8,6 +8,7 @@ import {
 import {
   apiClient,
   isBackendConfigured,
+  setAccessToken,
   type BackendTask,
   type TaskAnalysisResponse,
 } from '@/services/apiClient'
@@ -26,8 +27,11 @@ interface BattleResult {
   enemyHp: number
 }
 
+type SessionErrorDisposition = 'stale' | 'unauthorized' | 'handled'
+
 interface QuestState {
   backendEnabled: boolean
+  sessionRevision: number
   userName: string
   isAuthenticated: boolean
   onboardingCompleted: boolean
@@ -121,6 +125,7 @@ function createDemoState(): Omit<QuestState, 'backendEnabled' | 'isOffline'> {
   const today = new Date().toISOString().slice(0, 10)
 
   return {
+    sessionRevision: 0,
     userName: 'ゆうき',
     isAuthenticated: true,
     onboardingCompleted: true,
@@ -291,32 +296,34 @@ function backendTaskToQuestTask(task: BackendTask): QuestTask {
   return parseServerTask(task, String(task.id))
 }
 
-function initialState(): QuestState {
+function createBackendState(): QuestState {
   const today = new Date().toISOString().slice(0, 10)
-  if (isBackendConfigured) {
-    return {
-      backendEnabled: true,
-      userName: 'Hero',
-      isAuthenticated: false,
-      onboardingCompleted: true,
-      isOffline: false,
-      phaseOverride: null,
-      clockTick: Date.now(),
-      plan: { localDate: today, wakeTime: '07:00', sleepTime: '23:30', version: 1, tasks: [] },
-      game: {
-        level: 1,
-        coins: 0,
-        streakDays: 0,
-        enemyName: '未接続',
-        enemyHp: 0,
-        enemyMaxHp: 1,
-        inventory: [],
-      },
-      processedBattles: {},
-      toast: '',
-    }
+  return {
+    backendEnabled: true,
+    sessionRevision: 0,
+    userName: 'Hero',
+    isAuthenticated: false,
+    onboardingCompleted: true,
+    isOffline: false,
+    phaseOverride: null,
+    clockTick: Date.now(),
+    plan: { localDate: today, wakeTime: '07:00', sleepTime: '23:30', version: 1, tasks: [] },
+    game: {
+      level: 1,
+      coins: 0,
+      streakDays: 0,
+      enemyName: '未接続',
+      enemyHp: 0,
+      enemyMaxHp: 1,
+      inventory: [],
+    },
+    processedBattles: {},
+    toast: '',
   }
+}
 
+function initialState(): QuestState {
+  if (isBackendConfigured) return createBackendState()
   return { backendEnabled: false, isOffline: false, ...createDemoState() }
 }
 
@@ -364,8 +371,13 @@ export const useQuestStore = defineStore('quest', {
       this.persist()
     },
     enterDemoMode(): void {
+      const nextRevision = this.sessionRevision + 1
+      setAccessToken(null)
+      localStorage.removeItem(persistenceKey(true))
       this.backendEnabled = false
       this.$patch(createDemoState())
+      this.sessionRevision = nextRevision
+      this.processedBattles = {}
       this.persist()
     },
     async connectBackend(): Promise<boolean> {
@@ -373,19 +385,20 @@ export const useQuestStore = defineStore('quest', {
         this.setAuthenticated(true)
         return true
       }
+      const revision = this.sessionRevision
       try {
         await apiClient.health()
-        this.isAuthenticated = true
+        if (!this.isCurrentBackendSession(revision)) return false
         this.toast = 'バックエンドへ接続しました'
-        this.persist()
         return true
       } catch {
-        this.isAuthenticated = false
+        if (!this.isCurrentBackendSession(revision)) return false
         this.toast = 'バックエンドへ接続できません。起動状態と接続先を確認してください'
         return false
       }
     },
     async startTask(taskId: string): Promise<boolean> {
+      const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'TODO') return false
 
@@ -406,13 +419,19 @@ export const useQuestStore = defineStore('quest', {
       if (this.backendEnabled && typeof apiClient.updateTaskStatus === 'function') {
         try {
           const updated = await apiClient.updateTaskStatus(taskId, 'STARTED', this.plan.version, task)
+          if (!this.isCurrentBackendSession(revision)) return false
           Object.assign(task, backendTaskToQuestTask(updated))
           this.plan.version += 1
           this.persist()
-        } catch {
+        } catch (reason) {
+          const disposition = this.handleSessionApiError(
+            reason,
+            revision,
+            '通信に失敗したため、タスクは開始していません',
+          )
+          if (disposition !== 'handled') return false
           task.status = previous.status
           this.game.inventory = previous.inventory
-          this.toast = '通信に失敗したため、タスクは開始していません'
           this.persist()
           return false
         }
@@ -420,6 +439,7 @@ export const useQuestStore = defineStore('quest', {
       return true
     },
     async completeTask(taskId: string): Promise<boolean> {
+      const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'STARTED') return false
 
@@ -431,6 +451,7 @@ export const useQuestStore = defineStore('quest', {
         }
         try {
           const result = await apiClient.completeTask(backendTaskId)
+          if (!this.isCurrentBackendSession(revision)) return false
           if (
             !Number.isSafeInteger(result.total_coins) ||
             result.total_coins < 0 ||
@@ -446,8 +467,12 @@ export const useQuestStore = defineStore('quest', {
           this.toast = `${task.title}を達成！ ${result.earned_coins}コイン獲得`
           this.persist()
           return true
-        } catch {
-          this.toast = '通信に失敗したため、タスクは完了にしていません'
+        } catch (reason) {
+          this.handleSessionApiError(
+            reason,
+            revision,
+            '通信に失敗したため、タスクは完了にしていません',
+          )
           return false
         }
       }
@@ -465,21 +490,34 @@ export const useQuestStore = defineStore('quest', {
       if (!normalizedTitle) throw new Error('タスク名を入力してください。')
 
       if (this.backendEnabled) {
+        const revision = this.sessionRevision
         let analysis: TaskAnalysisResponse | null = null
         try {
           analysis = await apiClient.analyzeTask(normalizedTitle)
-        } catch {
+          if (!this.isCurrentBackendSession(revision)) throw this.sessionChangedError()
+        } catch (reason) {
+          const disposition = this.handleSessionApiError(reason, revision, '')
+          if (disposition === 'stale') throw this.sessionChangedError()
+          if (disposition === 'unauthorized') throw reason
           // AIが利用できない場合も決定論的な既定値で作成を続ける。
         }
         const normalized = safeAnalysis(analysis, requiredPlace)
-        const created = await apiClient.createTask({
-          user_id: 1,
-          title: normalizedTitle,
-          category: normalized.category,
-          estimated_minutes: normalized.estimatedMinutes,
-          is_completed: false,
-          recommended_qr: placeToBackendQr(normalized.requiredPlace),
-        })
+        let created: BackendTask
+        try {
+          created = await apiClient.createTask({
+            user_id: 1,
+            title: normalizedTitle,
+            category: normalized.category,
+            estimated_minutes: normalized.estimatedMinutes,
+            is_completed: false,
+            recommended_qr: placeToBackendQr(normalized.requiredPlace),
+          })
+        } catch (reason) {
+          const disposition = this.handleSessionApiError(reason, revision, '')
+          if (disposition === 'stale') throw this.sessionChangedError()
+          throw reason
+        }
+        if (!this.isCurrentBackendSession(revision)) throw this.sessionChangedError()
         const task = backendTaskToQuestTask(created)
         this.plan.tasks.push(task)
         this.toast = `${task.title}をバックエンドへ登録しました`
@@ -503,6 +541,7 @@ export const useQuestStore = defineStore('quest', {
       return task
     },
     async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
+      const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'TODO') return false
 
@@ -516,17 +555,23 @@ export const useQuestStore = defineStore('quest', {
 
       try {
         const result = await apiClient.verifyQr(rawQrCode, targetQrCode)
+        if (!this.isCurrentBackendSession(revision)) return false
         if (result.success !== true) {
           this.toast = 'QRコードが一致しません'
           return false
         }
         return this.startTask(taskId)
-      } catch {
-        this.toast = 'QRコードを確認できません。通信状態を確認してください'
+      } catch (reason) {
+        this.handleSessionApiError(
+          reason,
+          revision,
+          'QRコードを確認できません。通信状態を確認してください',
+        )
         return false
       }
     },
     async removeTask(taskId: string): Promise<void> {
+      const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status === 'DONE') return
 
@@ -537,28 +582,41 @@ export const useQuestStore = defineStore('quest', {
       if (this.backendEnabled) {
         try {
           await apiClient.deleteTask(taskId)
+          if (!this.isCurrentBackendSession(revision)) return
           this.plan.version += 1
           this.persist()
-        } catch {
+        } catch (reason) {
+          const disposition = this.handleSessionApiError(
+            reason,
+            revision,
+            '削除に失敗したため、タスクを戻しました',
+          )
+          if (disposition !== 'handled') return
           this.plan.tasks = previousTasks
-          this.toast = '削除に失敗したため、タスクを戻しました'
           this.persist()
         }
       }
     },
     async savePlan(wakeTime: string, sleepTime: string): Promise<void> {
+      const revision = this.sessionRevision
       this.plan.wakeTime = wakeTime
       this.plan.sleepTime = sleepTime
 
       if (this.backendEnabled) {
         try {
           const saved = await apiClient.savePlan({ ...this.plan, wakeTime, sleepTime })
+          if (!this.isCurrentBackendSession(revision)) return
           this.plan = normalizePlan(saved, this.plan)
           this.toast = '明日の計画とWebアラームを保存しました'
           this.persist()
           return
-        } catch {
-          this.toast = '保存に失敗しました。オフラインの場合はローカルに保存されます'
+        } catch (reason) {
+          const disposition = this.handleSessionApiError(
+            reason,
+            revision,
+            '保存に失敗しました。オフラインの場合はローカルに保存されます',
+          )
+          if (disposition !== 'handled') return
         }
       } else {
         this.plan.version += 1
@@ -567,12 +625,16 @@ export const useQuestStore = defineStore('quest', {
       this.persist()
     },
     async attack(itemIds: string[], clientEventId: string): Promise<BattleResult> {
+      const revision = this.sessionRevision
       const existing = this.processedBattles[clientEventId]
       if (existing) return existing
 
       if (this.backendEnabled && typeof apiClient.battle === 'function') {
         try {
           const result = await apiClient.battle(itemIds, clientEventId)
+          if (!this.isCurrentBackendSession(revision)) {
+            return { damage: 0, enemyHp: this.game.enemyHp }
+          }
           if (!Number.isInteger(result.damage) || !Number.isInteger(result.enemyHp)) {
             throw new Error('Invalid battle response')
           }
@@ -584,8 +646,12 @@ export const useQuestStore = defineStore('quest', {
           this.toast = result.damage > 0 ? `${result.damage}ダメージ！` : 'アイテムを選んでください'
           this.persist()
           return result
-        } catch {
-          this.toast = '攻撃に失敗しました。通信状態を確認してください'
+        } catch (reason) {
+          this.handleSessionApiError(
+            reason,
+            revision,
+            '攻撃に失敗しました。通信状態を確認してください',
+          )
           return { damage: 0, enemyHp: this.game.enemyHp }
         }
       }
@@ -608,9 +674,60 @@ export const useQuestStore = defineStore('quest', {
       this.persist()
       return result
     },
+    isCurrentBackendSession(revision: number): boolean {
+      return this.backendEnabled && this.sessionRevision === revision
+    },
+    sessionChangedError(): Error {
+      return new Error('セッションが変更されたため、操作を中止しました。')
+    },
+    handleSessionApiError(
+      reason: unknown,
+      revision: number,
+      message: string,
+    ): SessionErrorDisposition {
+      if (!this.isCurrentBackendSession(revision)) return 'stale'
+      if (asRecord(reason).status === 401) {
+        this.logoutBackendSession()
+        this.toast = '認証の有効期限が切れました。もう一度ログインしてください'
+        return 'unauthorized'
+      }
+      if (message) this.toast = message
+      return 'handled'
+    },
     setAuthenticated(authenticated: boolean): void {
+      if (this.backendEnabled && !authenticated) {
+        this.logoutBackendSession()
+        return
+      }
       this.isAuthenticated = authenticated
       this.persist()
+    },
+    startBackendSession(userName: string): void {
+      const next = createBackendState()
+      const nextRevision = this.sessionRevision + 1
+      localStorage.removeItem(persistenceKey(true))
+      this.$patch({
+        ...next,
+        sessionRevision: nextRevision,
+        userName: userName.trim() || next.userName,
+        isAuthenticated: true,
+      })
+      this.processedBattles = {}
+      this.persist()
+    },
+    logoutBackendSession(): void {
+      const nextRevision = this.sessionRevision + 1
+      setAccessToken(null)
+      this.$patch({
+        ...createBackendState(),
+        sessionRevision: nextRevision,
+      })
+      this.processedBattles = {}
+      localStorage.removeItem(persistenceKey(true))
+    },
+    resetLocalData(): void {
+      if (this.backendEnabled) this.logoutBackendSession()
+      else this.resetDemo()
     },
     setOnboardingCompleted(completed: boolean): void {
       this.onboardingCompleted = completed
@@ -633,6 +750,47 @@ export const useQuestStore = defineStore('quest', {
       this.toast = ''
     },
     async hydrate(): Promise<void> {
+      if (this.backendEnabled) {
+        localStorage.removeItem(persistenceKey(true))
+        if (!this.isAuthenticated) return
+
+        const revision = this.sessionRevision
+        try {
+          const [plan, game] = await Promise.all([
+            apiClient.getPlan(this.plan.localDate),
+            apiClient.getGameState(),
+          ])
+          if (
+            revision !== this.sessionRevision ||
+            !this.backendEnabled ||
+            !this.isAuthenticated
+          ) {
+            return
+          }
+          this.plan = normalizePlan(plan, this.plan)
+          this.game = normalizeGameState(game, this.game)
+          this.persist()
+        } catch (reason) {
+          if (
+            revision !== this.sessionRevision ||
+            !this.backendEnabled ||
+            !this.isAuthenticated
+          ) {
+            return
+          }
+          const status = asRecord(reason).status
+          if (status === 401) {
+            this.logoutBackendSession()
+            this.toast = '認証の有効期限が切れました。もう一度ログインしてください'
+          } else if (status === 403) {
+            this.toast = 'このデータを表示する権限がありません'
+          } else {
+            this.toast = 'データを同期できません。通信状態を確認してください'
+          }
+        }
+        return
+      }
+
       const key = persistenceKey(this.backendEnabled)
       const raw = localStorage.getItem(key)
       let saved: Partial<QuestState> | null = null
@@ -641,19 +799,6 @@ export const useQuestStore = defineStore('quest', {
           saved = JSON.parse(raw) as Partial<QuestState>
         } catch {
           localStorage.removeItem(key)
-        }
-      }
-
-      if (this.backendEnabled) {
-        try {
-          const [plan, game] = await Promise.all([
-            apiClient.getPlan(this.plan.localDate),
-            apiClient.getGameState(),
-          ])
-          this.plan = normalizePlan(plan, this.plan)
-          this.game = normalizeGameState(game, this.game)
-        } catch {
-          // Use the last local snapshot when the API is unavailable.
         }
       }
 
@@ -666,7 +811,7 @@ export const useQuestStore = defineStore('quest', {
           clockTick: saved.clockTick ?? this.clockTick,
           processedBattles: saved.processedBattles ?? this.processedBattles,
         })
-        if (!this.backendEnabled && saved.plan && saved.game) {
+        if (saved.plan && saved.game) {
           this.plan = normalizePlan(saved.plan, this.plan)
           this.game = normalizeGameState(saved.game, this.game)
         }
@@ -674,25 +819,36 @@ export const useQuestStore = defineStore('quest', {
     },
     persist(): void {
       const key = persistenceKey(this.backendEnabled)
+      if (this.backendEnabled) {
+        localStorage.removeItem(key)
+        return
+      }
+      const snapshot: Partial<QuestState> = {
+        userName: this.userName,
+        onboardingCompleted: this.onboardingCompleted,
+        phaseOverride: this.phaseOverride,
+        clockTick: this.clockTick,
+        plan: this.plan,
+        game: this.game,
+        processedBattles: this.processedBattles,
+      }
+      if (!this.backendEnabled) snapshot.isAuthenticated = this.isAuthenticated
       localStorage.setItem(
         key,
-        JSON.stringify({
-          userName: this.userName,
-          isAuthenticated: this.isAuthenticated,
-          onboardingCompleted: this.onboardingCompleted,
-          phaseOverride: this.phaseOverride,
-          clockTick: this.clockTick,
-          plan: this.plan,
-          game: this.game,
-          processedBattles: this.processedBattles,
-        }),
+        JSON.stringify(snapshot),
       )
     },
     resetDemo(): void {
-      const key = persistenceKey(this.backendEnabled)
-      const init = initialState()
+      if (this.backendEnabled) {
+        this.logoutBackendSession()
+        return
+      }
+      const key = persistenceKey(false)
+      const nextRevision = this.sessionRevision + 1
+      const init = { backendEnabled: false, isOffline: false, ...createDemoState() }
       this.$patch({
         backendEnabled: init.backendEnabled,
+        sessionRevision: nextRevision,
         userName: init.userName,
         isAuthenticated: init.isAuthenticated,
         onboardingCompleted: init.onboardingCompleted,
@@ -704,6 +860,7 @@ export const useQuestStore = defineStore('quest', {
         processedBattles: {},
         toast: '',
       })
+      this.processedBattles = {}
       localStorage.removeItem(key)
     },
   },

@@ -22,18 +22,28 @@ async function login() {
   try {
     const response = await apiClient.login(email.value, password.value)
     setAccessToken(response.accessToken)
-    store.setUserName(response.user.name)
-    store.setAuthenticated(true)
+    const currentUser = await apiClient.me()
+    store.startBackendSession(currentUser.name)
+    await store.hydrate()
+    if (!store.isAuthenticated) {
+      error.value = store.toast || '認証を確認できませんでした。もう一度ログインしてください。'
+      return
+    }
     void router.replace(store.onboardingCompleted ? '/home' : '/onboarding')
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : 'ログインに失敗しました。'
+    store.logoutBackendSession()
+    const message =
+      typeof (reason as { message?: unknown })?.message === 'string'
+        ? (reason as { message: string }).message
+        : 'ログインに失敗しました。'
+    error.value = message
   } finally {
     submitting.value = false
   }
 }
 
 function useDemo() {
-  setAccessToken(null)
+  if (submitting.value) return
   store.enterDemoMode()
   void router.replace('/home')
 }
@@ -72,7 +82,13 @@ function useDemo() {
         <p class="auth-note">認証トークンはブラウザの永続ストレージへ保存しません。</p>
         <div class="auth-guest-action">
           <p class="auth-note">アカウントがなくても、入力なしでローカルデモを始められます。</p>
-          <button class="button button--outline button--wide" type="button" data-testid="guest-login" @click="useDemo">
+          <button
+            class="button button--outline button--wide"
+            type="button"
+            data-testid="guest-login"
+            :disabled="submitting"
+            @click="useDemo"
+          >
             入力なしでデモを始める
           </button>
         </div>

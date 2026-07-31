@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import BottomNav from '@/components/BottomNav.vue'
 import ToastNotice from '@/components/ToastNotice.vue'
@@ -8,7 +8,6 @@ import { phaseFromHour } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
 
 const route = useRoute()
-const router = useRouter()
 const store = useQuestStore()
 
 const hideChrome = computed(() => Boolean(route.meta.hideChrome))
@@ -26,8 +25,6 @@ onMounted(() => {
   syncNetworkState()
   window.addEventListener('online', syncNetworkState)
   window.addEventListener('offline', syncNetworkState)
-
-  if (!store.isAuthenticated && !route.meta.public) void router.replace('/login')
 })
 
 onBeforeUnmount(() => {
