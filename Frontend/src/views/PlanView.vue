@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { validatePlanDraft } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
-import type { PlaceType } from '../domain/types'
+import type { PlaceType } from '@/domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
@@ -12,6 +12,7 @@ const sleepTime = ref(store.plan.sleepTime)
 const newTask = ref('')
 const newTaskPlace = ref<PlaceType>('NONE')
 const errors = ref<string[]>([])
+const addingTask = ref(false)
 const aiSuggested = ref(false)
 
 const totalMinutes = computed(() =>
@@ -24,10 +25,18 @@ async function addTask() {
     errors.value = ['タスク名を入力してください']
     return
   }
-  await store.addTask(title, newTaskPlace.value)
-  newTask.value = ''
-  newTaskPlace.value = 'NONE'
+  addingTask.value = true
   errors.value = []
+  try {
+    await store.addTask(title, newTaskPlace.value)
+    newTask.value = ''
+    newTaskPlace.value = 'NONE'
+    aiSuggested.value = false
+  } catch {
+    errors.value = ['タスクを登録できませんでした。通信状態を確認して再試行してください。']
+  } finally {
+    addingTask.value = false
+  }
 }
 
 function suggestWithRules() {
@@ -42,12 +51,13 @@ async function save() {
     taskTitles: store.tasks.map((task) => task.title),
   })
   if (errors.value.length > 0) return
+
   await store.savePlan(wakeTime.value, sleepTime.value)
   void router.push('/home')
 }
 
 async function removeTask(taskId: string) {
-  const task = store.tasks.find((t) => t.id === taskId)
+  const task = store.tasks.find((item) => item.id === taskId)
   const title = task?.title ?? 'このタスク'
   if (!confirm(`${title} を削除してよいですか？`)) return
   await store.removeTask(taskId)
@@ -98,7 +108,7 @@ async function removeTask(taskId: string) {
             </button>
           </div>
 
-          <div class="plan-task-row" v-for="task in store.tasks" :key="task.id">
+          <div v-for="task in store.tasks" :key="task.id" class="plan-task-row">
             <span class="drag-handle" aria-hidden="true">⠿</span>
             <div>
               <strong>{{ task.title }}</strong>
@@ -127,7 +137,9 @@ async function removeTask(taskId: string) {
                 <option value="ENTRANCE">玄関</option>
               </select>
             </label>
-            <button class="button button--outline" type="button" @click="addTask">＋ 追加する</button>
+            <button class="button button--outline" type="button" :disabled="addingTask" @click="addTask">
+              {{ addingTask ? '登録中…' : store.backendEnabled ? '✦ AI分析して追加' : '＋ 追加する' }}
+            </button>
           </div>
         </section>
       </div>
@@ -150,7 +162,9 @@ async function removeTask(taskId: string) {
           <li v-for="error in errors" :key="error">{{ error }}</li>
         </ul>
         <button class="button button--wide" type="submit">計画を保存してアラーム設定</button>
-        <p class="helper-text">Webアラームはページを前面表示中に動作します。</p>
+        <p class="helper-text">
+          {{ store.backendEnabled ? '計画はバックエンドにも保存します。' : 'Webアラームと計画時刻は端末内に保存します。' }}
+        </p>
       </aside>
     </form>
   </div>

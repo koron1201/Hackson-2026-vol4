@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { QuestTask } from '../domain/types'
 import { useRoute, useRouter } from 'vue-router'
 import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
 import { useQuestStore } from '@/stores/quest'
+import type { QuestTask } from '@/domain/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,9 +30,7 @@ async function startCamera() {
 
   status.value = 'starting'
   errorMessage.value = ''
-  const reader = new BrowserQRCodeReader(undefined, {
-    delayBetweenScanAttempts: 180,
-  })
+  const reader = new BrowserQRCodeReader(undefined, { delayBetweenScanAttempts: 180 })
 
   try {
     const devices = await BrowserQRCodeReader.listVideoInputDevices()
@@ -59,8 +57,9 @@ async function verify(rawToken: string) {
   if (!task.value || scannedOnce.value) return
   scannedOnce.value = true
 
-  // 生のQR値はログ・ストレージへ保存しない。
-  if (!rawToken.startsWith('mq1_') && rawToken !== 'demo') {
+  // 生のQR値はログ・ストレージへ保存せず、照合処理へ一時的に渡すだけにする。
+  const verified = await store.verifyQrForTask(rawToken, task.value.id)
+  if (!verified) {
     scannedOnce.value = false
     errorMessage.value = `${placeLabel.value}のQRではありません。`
     navigator.vibrate?.([100, 60, 100])
@@ -69,7 +68,6 @@ async function verify(rawToken: string) {
 
   controls?.stop()
   status.value = 'success'
-  await store.startTask(task.value.id)
   navigator.vibrate?.(120)
   window.setTimeout(() => void router.replace('/tasks'), 1200)
 }
@@ -88,7 +86,7 @@ onBeforeUnmount(() => controls?.stop())
     <header class="immersive-header">
       <button class="icon-button icon-button--glass" type="button" aria-label="戻る" @click="cancel">←</button>
       <strong>QRをスキャン</strong>
-      <span class="secure-camera">端末内処理</span>
+      <span class="secure-camera">{{ store.backendEnabled ? 'サーバー照合' : '端末内処理' }}</span>
     </header>
 
     <section class="scanner-copy">
@@ -99,10 +97,7 @@ onBeforeUnmount(() => controls?.stop())
 
     <div class="camera-stage">
       <video ref="videoElement" muted playsinline></video>
-      <div class="scan-frame" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-        <span></span>
-      </div>
+      <div class="scan-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span></span></div>
       <div v-if="status === 'starting'" class="camera-loading">カメラを準備中…</div>
       <div v-if="status === 'success'" class="scan-success" role="status">
         <span aria-hidden="true">✓</span>
@@ -113,13 +108,20 @@ onBeforeUnmount(() => controls?.stop())
 
     <p v-if="errorMessage" class="scanner-error" role="alert">{{ errorMessage }}</p>
     <div class="scanner-actions">
-      <button class="button button--wide button--light" type="button" @click="verify('demo')">
+      <button
+        v-if="!store.backendEnabled"
+        class="button button--wide button--light"
+        type="button"
+        @click="verify('demo')"
+      >
         デモ用QRで続ける
       </button>
       <button v-if="status === 'error'" class="text-button text-button--light" type="button" @click="startCamera">
         カメラをもう一度試す
       </button>
     </div>
-    <p class="camera-privacy">カメラ映像は端末の外へ送信・保存されません。</p>
+    <p class="camera-privacy">
+      カメラ映像は送信・保存しません。APIモードでは読み取ったQR文字列だけを照合用に送信します。
+    </p>
   </div>
 </template>

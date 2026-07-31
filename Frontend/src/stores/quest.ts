@@ -1,7 +1,25 @@
 import { defineStore } from 'pinia'
-import { calculateProgress, estimateBattleDamage, forecastDay, minutesUntilClock } from '@/domain/quest'
-import { apiClient } from '@/services/apiClient'
-import type { DailyPlan, GameState, InventoryItem, PlaceType, QuestTask, TaskCategory } from '../domain/types'
+import {
+  calculateProgress,
+  estimateBattleDamage,
+  forecastDay,
+  minutesUntilClock,
+} from '@/domain/quest'
+import {
+  apiClient,
+  isBackendConfigured,
+  type BackendTask,
+  type TaskAnalysisResponse,
+} from '@/services/apiClient'
+import type {
+  DailyPlan,
+  GameState,
+  InventoryItem,
+  PlaceType,
+  QuestTask,
+  TaskCategory,
+  TaskStatus,
+} from '@/domain/types'
 
 interface BattleResult {
   damage: number
@@ -9,6 +27,7 @@ interface BattleResult {
 }
 
 interface QuestState {
+  backendEnabled: boolean
   userName: string
   isAuthenticated: boolean
   onboardingCompleted: boolean
@@ -98,57 +117,188 @@ const demoInventory: InventoryItem[] = [
   },
 ]
 
-const allowedCategories = ['HYGIENE', 'MEAL', 'PC_WORK', 'OUTING', 'EXERCISE', 'OTHER'] as const
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
+}
 
-function parseServerTask(src: any, fallbackId = '0'): QuestTask {
-  const categoryRaw = src.category ?? src.cat ?? ''
-  // Accept allowed english tokens, otherwise fallback to OTHER
-  const category = (allowedCategories.includes(categoryRaw) ? (categoryRaw as TaskCategory) : 'OTHER') as TaskCategory
+function isTaskStatus(value: unknown): value is TaskStatus {
+  return value === 'TODO' || value === 'STARTED' || value === 'DONE' || value === 'SKIPPED'
+}
 
-  const estimatedMinutes = src.estimatedMinutes ?? src.estimated_minutes ?? 0
-  const requiredPlace = (src.requiredPlace ?? src.recommended_qr ?? 'NONE') as PlaceType
+function normalizeCategory(value: unknown): TaskCategory {
+  if (typeof value !== 'string') return 'OTHER'
+  const category = value.trim().toUpperCase()
+  if (category === 'HYGIENE' || category === '衛生' || category === '習慣') return 'HYGIENE'
+  if (category === 'MEAL' || category === '食事') return 'MEAL'
+  if (category === 'PC_WORK' || category === 'PC' || category === '仕事') return 'PC_WORK'
+  if (category === 'OUTING' || category === '外出') return 'OUTING'
+  if (category === 'EXERCISE' || category === '運動') return 'EXERCISE'
+  return 'OTHER'
+}
+
+function weightForMinutes(minutes: number): number {
+  if (minutes <= 15) return 1
+  if (minutes <= 30) return 2
+  if (minutes <= 60) return 3
+  return 4
+}
+
+function placeToBackendQr(place: PlaceType): string | null {
+  const qrCodes: Record<PlaceType, string | null> = {
+    WASHROOM: 'WASHROOM',
+    PC: 'DESK',
+    ENTRANCE: 'ENTRANCE',
+    NONE: null,
+  }
+  return qrCodes[place]
+}
+
+function backendQrToPlace(value: unknown): PlaceType {
+  if (typeof value !== 'string') return 'NONE'
+  const qrCode = value.trim().toUpperCase()
+  if (qrCode === 'WASHROOM') return 'WASHROOM'
+  if (qrCode === 'DESK' || qrCode === 'PC') return 'PC'
+  if (qrCode === 'ENTRANCE') return 'ENTRANCE'
+  return 'NONE'
+}
+
+function weightFromValue(value: unknown, minutes: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 5
+    ? value
+    : weightForMinutes(minutes)
+}
+
+function parseServerTask(source: unknown, fallbackId = '0'): QuestTask {
+  const task = asRecord(source)
+  const estimatedMinutesRaw = task.estimatedMinutes ?? task.estimated_minutes
+  const estimatedMinutes =
+    typeof estimatedMinutesRaw === 'number' && Number.isFinite(estimatedMinutesRaw)
+      ? Math.max(1, Math.min(1440, Math.round(estimatedMinutesRaw)))
+      : 15
+  const status = isTaskStatus(task.status)
+    ? task.status
+    : task.is_completed === true
+      ? 'DONE'
+      : 'TODO'
 
   return {
-    id: String(src.id ?? src.task_id ?? fallbackId),
-    title: src.title ?? src.name ?? 'Untitled',
-    taskType: (src.taskType as QuestTask['taskType']) ?? 'DAILY',
-    category,
-    status: (src.status as QuestTask['status']) ?? 'TODO',
-    estimatedMinutes: Number(estimatedMinutes) || 0,
-    weight: src.weight ?? Math.max(1, Math.floor((Number(estimatedMinutes) || 20) / 20)),
-    requiredPlace: requiredPlace,
-    scheduledWindow: (src.scheduledWindow as QuestTask['scheduledWindow']) ?? 'ANY',
+    id: String(task.id ?? task.task_id ?? fallbackId),
+    title: typeof task.title === 'string' ? task.title.trim().slice(0, 120) : 'Untitled',
+    taskType: task.taskType === 'HABIT' ? 'HABIT' : 'DAILY',
+    category: normalizeCategory(task.category ?? task.cat),
+    status,
+    estimatedMinutes,
+    weight: weightFromValue(task.weight, estimatedMinutes),
+    requiredPlace: backendQrToPlace(task.requiredPlace ?? task.recommended_qr),
+    scheduledWindow:
+      task.scheduledWindow === 'MORNING' ||
+      task.scheduledWindow === 'DAYTIME' ||
+      task.scheduledWindow === 'EVENING'
+        ? task.scheduledWindow
+        : 'ANY',
   }
 }
 
-function normalizePlan(src: any) {
+function normalizePlan(source: unknown, fallback: DailyPlan): DailyPlan {
+  const plan = asRecord(source)
+  const tasks = Array.isArray(plan.tasks)
+    ? plan.tasks.map((task, index) => parseServerTask(task, String(index)))
+    : fallback.tasks
   return {
-    localDate: src.localDate ?? src.date ?? new Date().toISOString().slice(0, 10),
-    wakeTime: src.wakeTime ?? src.wake_time ?? '07:00',
-    sleepTime: src.sleepTime ?? src.sleep_time ?? '23:30',
-    version: src.version ?? 1,
-    tasks: Array.isArray(src.tasks) ? src.tasks.map((t: any, i: number) => parseServerTask(t, String(i))) : [],
-  } as DailyPlan
+    localDate:
+      typeof plan.localDate === 'string'
+        ? plan.localDate
+        : typeof plan.date === 'string'
+          ? plan.date
+          : fallback.localDate,
+    wakeTime: typeof plan.wakeTime === 'string' ? plan.wakeTime : fallback.wakeTime,
+    sleepTime: typeof plan.sleepTime === 'string' ? plan.sleepTime : fallback.sleepTime,
+    version: typeof plan.version === 'number' ? plan.version : fallback.version,
+    tasks,
+  }
+}
+
+function normalizeGameState(source: unknown, fallback: GameState): GameState {
+  const game = asRecord(source)
+  const numberOr = (key: string, defaultValue: number) =>
+    typeof game[key] === 'number' && Number.isFinite(game[key]) ? game[key] : defaultValue
+  const inventory = Array.isArray(game.inventory)
+    ? game.inventory.filter((item): item is InventoryItem => {
+        const value = asRecord(item)
+        return (
+          typeof value.id === 'string' &&
+          typeof value.type === 'string' &&
+          typeof value.power === 'number' &&
+          typeof value.state === 'string' &&
+          typeof value.sourceTaskId === 'string'
+        )
+      })
+    : fallback.inventory
+
+  return {
+    level: numberOr('level', fallback.level),
+    coins: numberOr('coins', fallback.coins),
+    streakDays: numberOr('streakDays', fallback.streakDays),
+    enemyName: typeof game.enemyName === 'string' ? game.enemyName : fallback.enemyName,
+    enemyHp: numberOr('enemyHp', fallback.enemyHp),
+    enemyMaxHp: Math.max(1, numberOr('enemyMaxHp', fallback.enemyMaxHp)),
+    inventory,
+  }
+}
+
+function backendTaskToQuestTask(task: BackendTask): QuestTask {
+  if (
+    !Number.isInteger(task.id) ||
+    task.id <= 0 ||
+    typeof task.title !== 'string' ||
+    task.title.trim().length === 0 ||
+    !Number.isInteger(task.estimated_minutes) ||
+    task.estimated_minutes < 1 ||
+    task.estimated_minutes > 1440
+  ) {
+    throw new Error('バックエンドから不正なタスクを受信しました。')
+  }
+  return parseServerTask(task, String(task.id))
 }
 
 function initialState(): QuestState {
+  const today = new Date().toISOString().slice(0, 10)
+  if (isBackendConfigured) {
+    return {
+      backendEnabled: true,
+      userName: 'Hero',
+      isAuthenticated: false,
+      onboardingCompleted: true,
+      isOffline: false,
+      phaseOverride: null,
+      clockTick: Date.now(),
+      plan: { localDate: today, wakeTime: '07:00', sleepTime: '23:30', version: 1, tasks: [] },
+      game: {
+        level: 1,
+        coins: 0,
+        streakDays: 0,
+        enemyName: '未接続',
+        enemyHp: 0,
+        enemyMaxHp: 1,
+        inventory: [],
+      },
+      processedBattles: {},
+      toast: '',
+    }
+  }
+
   return {
+    backendEnabled: false,
     userName: 'ゆうき',
     isAuthenticated: true,
     onboardingCompleted: true,
     isOffline: false,
     phaseOverride: null,
     clockTick: Date.now(),
-    plan: {
-      localDate: new Date().toISOString().slice(0, 10),
-      wakeTime: '07:00',
-      sleepTime: '23:30',
-      version: 1,
-      tasks: structuredClone(demoTasks),
-    },
+    plan: { localDate: today, wakeTime: '07:00', sleepTime: '23:30', version: 1, tasks: structuredClone(demoTasks) },
     game: {
       level: 12,
-      xp: 1240,
+      coins: 1240,
       streakDays: 7,
       enemyName: '洞窟のゴブリン',
       enemyHp: 380,
@@ -160,13 +310,39 @@ function initialState(): QuestState {
   }
 }
 
+function persistenceKey(backendEnabled: boolean): string {
+  return backendEnabled ? 'morningquest-backend' : 'morningquest-demo'
+}
+
+function safeAnalysis(analysis: TaskAnalysisResponse | null, selectedPlace: PlaceType) {
+  const estimatedMinutes =
+    typeof analysis?.estimated_minutes === 'number' &&
+    Number.isInteger(analysis.estimated_minutes) &&
+    analysis.estimated_minutes >= 1 &&
+    analysis.estimated_minutes <= 1440
+      ? analysis.estimated_minutes
+      : selectedPlace === 'PC'
+        ? 45
+        : 20
+  const suggestedPlace = backendQrToPlace(analysis?.recommended_qr)
+  return {
+    category: normalizeCategory(analysis?.category),
+    estimatedMinutes,
+    requiredPlace: selectedPlace === 'NONE' ? suggestedPlace : selectedPlace,
+  }
+}
+
 export const useQuestStore = defineStore('quest', {
   state: initialState,
   getters: {
     tasks: (state): QuestTask[] => state.plan.tasks,
     progress: (state) => calculateProgress(state.plan.tasks),
-    forecast: (state) => forecastDay(state.plan.tasks, minutesUntilClock(state.plan.sleepTime, new Date(state.clockTick))),
-    availableItems: (state) => state.game.inventory.filter((item: InventoryItem) => item.state === 'AVAILABLE'),
+    forecast: (state) =>
+      forecastDay(
+        state.plan.tasks,
+        minutesUntilClock(state.plan.sleepTime, new Date(state.clockTick)),
+      ),
+    availableItems: (state) => state.game.inventory.filter((item) => item.state === 'AVAILABLE'),
     nextTask: (state) =>
       state.plan.tasks.find((task) => task.status === 'TODO') ??
       state.plan.tasks.find((task) => task.status === 'STARTED') ??
@@ -177,16 +353,30 @@ export const useQuestStore = defineStore('quest', {
       this.userName = userName.trim() || this.userName
       this.persist()
     },
+    async connectBackend(): Promise<boolean> {
+      if (!this.backendEnabled) {
+        this.setAuthenticated(true)
+        return true
+      }
+      try {
+        await apiClient.health()
+        this.isAuthenticated = true
+        this.toast = 'バックエンドへ接続しました'
+        this.persist()
+        return true
+      } catch {
+        this.isAuthenticated = false
+        this.toast = 'バックエンドへ接続できません。起動状態と接続先を確認してください'
+        return false
+      }
+    },
     async startTask(taskId: string): Promise<boolean> {
-      const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
+      const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'TODO') return false
 
-      const prevStatus = task.status
-      const hadReward = this.game.inventory.some((item: InventoryItem) => item.sourceTaskId === taskId)
-
-      // optimistic update
+      const previous = { status: task.status, inventory: [...this.game.inventory] }
       task.status = 'STARTED'
-      if (!hadReward) {
+      if (!this.game.inventory.some((item) => item.sourceTaskId === taskId)) {
         this.game.inventory.push({
           id: `reward-${taskId}`,
           type: task.weight >= 4 ? 'BLADE' : 'SPARK',
@@ -198,191 +388,210 @@ export const useQuestStore = defineStore('quest', {
       this.toast = `${task.title}を開始しました`
       this.persist()
 
-      try {
-        const serverTask = await apiClient.updateTaskStatus(taskId, 'STARTED', this.plan.version, task)
-        Object.assign(task, parseServerTask(serverTask, taskId))
-        this.plan.version += 1
-        return true
-      } catch (err) {
-        console.error('startTask failed', err)
-        // rollback
-        task.status = prevStatus
-        if (!hadReward) {
-          this.game.inventory = this.game.inventory.filter((i) => i.sourceTaskId !== taskId)
+      if (this.backendEnabled && typeof apiClient.updateTaskStatus === 'function') {
+        try {
+          const updated = await apiClient.updateTaskStatus(taskId, 'STARTED', this.plan.version, task)
+          Object.assign(task, backendTaskToQuestTask(updated))
+          this.plan.version += 1
+          this.persist()
+        } catch {
+          task.status = previous.status
+          this.game.inventory = previous.inventory
+          this.toast = '通信に失敗したため、タスクは開始していません'
+          this.persist()
+          return false
         }
-        this.toast = err instanceof Error ? `サーバー同期に失敗しました: ${err.message}` : 'サーバー同期に失敗しました。オフライン時は後で再試行してください'
-        return false
       }
+      return true
     },
     async completeTask(taskId: string): Promise<boolean> {
-      const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
+      const task = this.plan.tasks.find((item) => item.id === taskId)
       if (!task || task.status !== 'STARTED') return false
 
-      const prevStatus = task.status
+      if (this.backendEnabled) {
+        const backendTaskId = Number(task.id)
+        if (!Number.isSafeInteger(backendTaskId) || backendTaskId <= 0) {
+          this.toast = 'このタスクはバックエンドと同期できません'
+          return false
+        }
+        try {
+          const result = await apiClient.completeTask(backendTaskId)
+          if (
+            !Number.isSafeInteger(result.total_coins) ||
+            result.total_coins < 0 ||
+            !Number.isSafeInteger(result.earned_coins) ||
+            result.earned_coins < 0
+          ) {
+            throw new Error('Invalid completion response')
+          }
+          task.status = 'DONE'
+          const reward = this.game.inventory.find((item) => item.sourceTaskId === taskId)
+          if (reward) reward.state = 'AVAILABLE'
+          this.game.coins = result.total_coins
+          this.toast = `${task.title}を達成！ ${result.earned_coins}コイン獲得`
+          this.persist()
+          return true
+        } catch {
+          this.toast = '通信に失敗したため、タスクは完了にしていません'
+          return false
+        }
+      }
 
-      // optimistic
       task.status = 'DONE'
-      const reward = this.game.inventory.find((item: InventoryItem) => item.sourceTaskId === taskId)
+      const reward = this.game.inventory.find((item) => item.sourceTaskId === taskId)
       if (reward) reward.state = 'AVAILABLE'
-      this.game.xp += task.weight * 20
+      this.game.coins += task.weight * 20
       this.toast = `${task.title}を達成！ アイテムを獲得しました`
       this.persist()
-
-      try {
-        const serverTask = await apiClient.updateTaskStatus(taskId, 'DONE', this.plan.version, task)
-        Object.assign(task, parseServerTask(serverTask, taskId))
-        this.plan.version += 1
-        return true
-      } catch (err) {
-        console.error('completeTask failed', err)
-        // rollback
-        task.status = prevStatus
-        if (reward) reward.state = 'PENDING'
-        this.game.xp = Math.max(0, this.game.xp - task.weight * 20)
-        this.toast = err instanceof Error ? `サーバー同期に失敗しました: ${err.message}` : 'サーバー同期に失敗しました。オフライン時は後で再試行してください'
-        return false
-      }
+      return true
     },
     async addTask(title: string, requiredPlace: PlaceType = 'NONE'): Promise<QuestTask> {
-      const payload: {
-        title: string
-        category: TaskCategory
-        estimated_minutes: number
-        is_completed: boolean
-        recommended_qr: PlaceType | null
-      } = {
-        title: title.trim(),
-        category: (requiredPlace === 'PC' ? 'PC_WORK' : 'OTHER') as TaskCategory,
-        estimated_minutes: requiredPlace === 'PC' ? 45 : 20,
-        is_completed: false,
-        recommended_qr: requiredPlace === 'NONE' ? null : requiredPlace,
+      const normalizedTitle = title.trim().slice(0, 120)
+      if (!normalizedTitle) throw new Error('タスク名を入力してください。')
+
+      if (this.backendEnabled) {
+        let analysis: TaskAnalysisResponse | null = null
+        try {
+          analysis = await apiClient.analyzeTask(normalizedTitle)
+        } catch {
+          // AIが利用できない場合も決定論的な既定値で作成を続ける。
+        }
+        const normalized = safeAnalysis(analysis, requiredPlace)
+        const created = await apiClient.createTask({
+          user_id: 1,
+          title: normalizedTitle,
+          category: normalized.category,
+          estimated_minutes: normalized.estimatedMinutes,
+          is_completed: false,
+          recommended_qr: placeToBackendQr(normalized.requiredPlace),
+        })
+        const task = backendTaskToQuestTask(created)
+        this.plan.tasks.push(task)
+        this.toast = `${task.title}をバックエンドへ登録しました`
+        this.persist()
+        return task
       }
-      // optimistic local task until server responds
-      const tempId = crypto.randomUUID()
-      const tempTask: QuestTask = {
-        id: tempId,
-        title: payload.title,
+
+      const task: QuestTask = {
+        id: crypto.randomUUID(),
+        title: normalizedTitle,
         taskType: 'DAILY',
-        category: payload.category,
+        category: requiredPlace === 'PC' ? 'PC_WORK' : 'OTHER',
         status: 'TODO',
-        estimatedMinutes: payload.estimated_minutes,
-        weight: payload.estimated_minutes >= 45 ? 3 : 2,
-        requiredPlace: requiredPlace,
+        estimatedMinutes: requiredPlace === 'PC' ? 45 : 20,
+        weight: requiredPlace === 'PC' ? 3 : 2,
+        requiredPlace,
         scheduledWindow: 'DAYTIME',
       }
-      this.plan.tasks.push(tempTask)
+      this.plan.tasks.push(task)
       this.persist()
+      return task
+    },
+    async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
+      const task = this.plan.tasks.find((item) => item.id === taskId)
+      if (!task || task.status !== 'TODO') return false
+
+      if (!this.backendEnabled) {
+        if (!rawQrCode.startsWith('mq1_') && rawQrCode !== 'demo') return false
+        return this.startTask(taskId)
+      }
+
+      const targetQrCode = placeToBackendQr(task.requiredPlace)
+      if (!targetQrCode) return this.startTask(taskId)
 
       try {
-        const created = await apiClient.createTask({
-          title: tempTask.title,
-          category: tempTask.category,
-          estimated_minutes: tempTask.estimatedMinutes,
-          recommended_qr: tempTask.requiredPlace === 'NONE' ? null : tempTask.requiredPlace,
-        } as any)
-
-        // map server response to local shape if necessary
-        const allowedCategories = ['HYGIENE', 'MEAL', 'PC_WORK', 'OUTING', 'EXERCISE', 'OTHER'] as const
-        const serverCategory = allowedCategories.includes((created as any).category) ? ((created as any).category as TaskCategory) : tempTask.category
-
-        const serverTask: QuestTask = {
-          id: String((created as any).id ?? created.id),
-          title: created.title,
-          taskType: (created.taskType as QuestTask['taskType']) ?? 'DAILY',
-          category: serverCategory,
-          status: (created.status as QuestTask['status']) ?? 'TODO',
-          estimatedMinutes: (created as any).estimatedMinutes ?? (created as any).estimated_minutes ?? tempTask.estimatedMinutes,
-          weight: created.weight ?? tempTask.weight,
-          requiredPlace: (created as any).requiredPlace ?? (created as any).recommended_qr ?? tempTask.requiredPlace,
-          scheduledWindow: (created.scheduledWindow as QuestTask['scheduledWindow']) ?? tempTask.scheduledWindow,
+        const result = await apiClient.verifyQr(rawQrCode, targetQrCode)
+        if (result.success !== true) {
+          this.toast = 'QRコードが一致しません'
+          return false
         }
-
-        // replace temp task
-        this.plan.tasks = this.plan.tasks.map((t) => (t.id === tempId ? serverTask : t))
-        this.plan.version += 1
-        this.persist()
-        return serverTask
-      } catch (err) {
-        console.error('addTask failed', err)
-        this.toast = 'タスク追加はローカルに保存されました（同期失敗）'
-        return tempTask
+        return this.startTask(taskId)
+      } catch {
+        this.toast = 'QRコードを確認できません。通信状態を確認してください'
+        return false
       }
     },
     async removeTask(taskId: string): Promise<void> {
-      const task = this.plan.tasks.find((item: QuestTask) => item.id === taskId)
-      if (!task) return
+      const task = this.plan.tasks.find((item) => item.id === taskId)
+      if (!task || task.status === 'DONE') return
 
-      // optimistic remove
-      const prevTasks = [...this.plan.tasks]
-      this.plan.tasks = this.plan.tasks.filter((item: QuestTask) => item.id !== taskId)
+      const previousTasks = [...this.plan.tasks]
+      this.plan.tasks = this.plan.tasks.filter((item) => item.id !== taskId)
       this.persist()
 
-      try {
-        await apiClient.deleteTask(taskId)
+      if (this.backendEnabled) {
+        try {
+          await apiClient.deleteTask(taskId)
           this.plan.version += 1
-          // ensure local persistence after successful delete
           this.persist()
-      } catch (err) {
-        console.error('removeTask failed', err)
-        this.toast = 'タスク削除はローカルに保存されました（同期失敗）'
-        // rollback
-        this.plan.tasks = prevTasks
+        } catch {
+          this.plan.tasks = previousTasks
+          this.toast = '削除に失敗したため、タスクを戻しました'
           this.persist()
+        }
       }
     },
     async savePlan(wakeTime: string, sleepTime: string): Promise<void> {
       this.plan.wakeTime = wakeTime
       this.plan.sleepTime = sleepTime
-      // try to save to server
-      try {
-        const saved = await apiClient.savePlan({ ...this.plan, wakeTime, sleepTime })
-        this.$patch({ plan: normalizePlan(saved) })
-        this.toast = '明日の計画とWebアラームを保存しました'
-        // persist local copy even when server save succeeds
-        this.persist()
-      } catch {
-        console.error('savePlan failed')
+
+      if (this.backendEnabled) {
+        try {
+          const saved = await apiClient.savePlan({ ...this.plan, wakeTime, sleepTime })
+          this.plan = normalizePlan(saved, this.plan)
+          this.toast = '明日の計画とWebアラームを保存しました'
+          this.persist()
+          return
+        } catch {
+          this.toast = '保存に失敗しました。オフラインの場合はローカルに保存されます'
+        }
+      } else {
         this.plan.version += 1
-        this.toast = '保存に失敗しました。オフラインの場合はローカルに保存されます'
-        this.persist()
+        this.toast = '明日の計画とWebアラームを保存しました'
       }
+      this.persist()
     },
     async attack(itemIds: string[], clientEventId: string): Promise<BattleResult> {
       const existing = this.processedBattles[clientEventId]
       if (existing) return existing
 
-      try {
-        const res = await apiClient.battle(itemIds, clientEventId)
-        // mark consumed locally
-        this.game.inventory.forEach((item: InventoryItem) => {
-          if (itemIds.includes(item.id) && item.state === 'AVAILABLE') item.state = 'CONSUMED'
-        })
-        this.game.enemyHp = res.enemyHp
-        const result = { damage: res.damage, enemyHp: res.enemyHp }
-        this.processedBattles[clientEventId] = result
-        this.toast = res.damage > 0 ? `${res.damage}ダメージ！` : 'アイテムを選んでください'
-        this.persist()
-        return result
-      } catch {
-        // fallback to local calculation when offline
-        const selected = this.game.inventory.filter(
-          (item: InventoryItem) => itemIds.includes(item.id) && item.state === 'AVAILABLE',
-        )
-        const damage = estimateBattleDamage(
-          selected.map((item) => item.power),
-          this.game.streakDays,
-          this.progress.percentage,
-        )
-        selected.forEach((item) => {
-          item.state = 'CONSUMED'
-        })
-        this.game.enemyHp = Math.max(0, this.game.enemyHp - damage)
-        const result = { damage, enemyHp: this.game.enemyHp }
-        this.processedBattles[clientEventId] = result
-        this.toast = damage > 0 ? `${damage}ダメージ！` : 'アイテムを選んでください'
-        this.persist()
-        return result
+      if (this.backendEnabled && typeof apiClient.battle === 'function') {
+        try {
+          const result = await apiClient.battle(itemIds, clientEventId)
+          if (!Number.isInteger(result.damage) || !Number.isInteger(result.enemyHp)) {
+            throw new Error('Invalid battle response')
+          }
+          this.game.inventory.forEach((item) => {
+            if (itemIds.includes(item.id) && item.state === 'AVAILABLE') item.state = 'CONSUMED'
+          })
+          this.game.enemyHp = Math.max(0, result.enemyHp)
+          this.processedBattles[clientEventId] = result
+          this.toast = result.damage > 0 ? `${result.damage}ダメージ！` : 'アイテムを選んでください'
+          this.persist()
+          return result
+        } catch {
+          this.toast = '攻撃に失敗しました。通信状態を確認してください'
+          return { damage: 0, enemyHp: this.game.enemyHp }
+        }
       }
+
+      const selected = this.game.inventory.filter(
+        (item) => itemIds.includes(item.id) && item.state === 'AVAILABLE',
+      )
+      const damage = estimateBattleDamage(
+        selected.map((item) => item.power),
+        this.game.streakDays,
+        this.progress.percentage,
+      )
+      selected.forEach((item) => {
+        item.state = 'CONSUMED'
+      })
+      this.game.enemyHp = Math.max(0, this.game.enemyHp - damage)
+      const result = { damage, enemyHp: this.game.enemyHp }
+      this.processedBattles[clientEventId] = result
+      this.toast = damage > 0 ? `${damage}ダメージ！` : 'アイテムを選んでください'
+      this.persist()
+      return result
     },
     setAuthenticated(authenticated: boolean): void {
       this.isAuthenticated = authenticated
@@ -409,23 +618,28 @@ export const useQuestStore = defineStore('quest', {
       this.toast = ''
     },
     async hydrate(): Promise<void> {
+      const key = persistenceKey(this.backendEnabled)
+      const raw = localStorage.getItem(key)
       let saved: Partial<QuestState> | null = null
-      const raw = localStorage.getItem('morningquest-demo')
       if (raw) {
         try {
           saved = JSON.parse(raw) as Partial<QuestState>
         } catch {
-          localStorage.removeItem('morningquest-demo')
+          localStorage.removeItem(key)
         }
       }
 
-      // try to load from server first
-      try {
-        const plan = await apiClient.getPlan(this.plan.localDate)
-        const game = await apiClient.getGameState()
-        this.$patch({ plan: normalizePlan(plan), game })
-      } catch {
-        // fallback to localStorage
+      if (this.backendEnabled) {
+        try {
+          const [plan, game] = await Promise.all([
+            apiClient.getPlan(this.plan.localDate),
+            apiClient.getGameState(),
+          ])
+          this.plan = normalizePlan(plan, this.plan)
+          this.game = normalizeGameState(game, this.game)
+        } catch {
+          // Use the last local snapshot when the API is unavailable.
+        }
       }
 
       if (saved) {
@@ -434,20 +648,19 @@ export const useQuestStore = defineStore('quest', {
           isAuthenticated: saved.isAuthenticated ?? this.isAuthenticated,
           onboardingCompleted: saved.onboardingCompleted ?? this.onboardingCompleted,
           phaseOverride: saved.phaseOverride ?? this.phaseOverride,
+          clockTick: saved.clockTick ?? this.clockTick,
           processedBattles: saved.processedBattles ?? this.processedBattles,
         })
-        if (!saved.plan || !saved.game) {
-          return
+        if (!this.backendEnabled && saved.plan && saved.game) {
+          this.plan = normalizePlan(saved.plan, this.plan)
+          this.game = normalizeGameState(saved.game, this.game)
         }
-        this.$patch({
-          plan: saved.plan,
-          game: saved.game,
-        })
       }
     },
     persist(): void {
+      const key = persistenceKey(this.backendEnabled)
       localStorage.setItem(
-        'morningquest-demo',
+        key,
         JSON.stringify({
           userName: this.userName,
           isAuthenticated: this.isAuthenticated,
@@ -461,9 +674,10 @@ export const useQuestStore = defineStore('quest', {
       )
     },
     resetDemo(): void {
+      const key = persistenceKey(this.backendEnabled)
       const init = initialState()
-      // Explicitly replace core slices to avoid leftover/demo placeholders
       this.$patch({
+        backendEnabled: init.backendEnabled,
         userName: init.userName,
         isAuthenticated: init.isAuthenticated,
         onboardingCompleted: init.onboardingCompleted,
@@ -475,7 +689,7 @@ export const useQuestStore = defineStore('quest', {
         processedBattles: {},
         toast: '',
       })
-      localStorage.removeItem('morningquest-demo')
+      localStorage.removeItem(key)
     },
   },
 })

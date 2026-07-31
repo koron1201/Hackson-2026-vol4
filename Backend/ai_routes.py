@@ -1,13 +1,13 @@
 import json
 import os
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
 
 router = APIRouter(prefix="/ai", tags=["AI Integration (BE-2)"])
 
 class AIAnalyzeRequest(BaseModel):
-    task_title: str
+    task_title: str = Field(min_length=1, max_length=120)
 
 @router.post("/analyze-task")
 def analyze_task(req: AIAnalyzeRequest):
@@ -19,7 +19,7 @@ def analyze_task(req: AIAnalyzeRequest):
             "recommended_qr": "WASHROOM",
             "note": "OPENAI_API_KEY未設定のためモック応答です"
         }
-    
+
     client = OpenAI(api_key=api_key)
     prompt = f"""
     以下のタスクについて、適切なカテゴリ、予想される所要時間（分）、および設置すべきおすすめのQRコード名（WASHROOM, DESK, ENTRANCE など）を提案してください。
@@ -41,10 +41,10 @@ def analyze_task(req: AIAnalyzeRequest):
         )
         result = json.loads(response.choices[0].message.content)
         return result
-    except Exception as e:
+    except Exception:
         return {
             "category": "その他",
             "estimated_minutes": 15,
             "recommended_qr": "DESK",
-            "error": str(e)
+            "note": "AI分析に失敗したためルールベースの候補を返しました"
         }

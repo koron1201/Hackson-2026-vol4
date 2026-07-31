@@ -50,7 +50,7 @@ export interface InventoryItem {
 
 export interface GameState {
   level: number
-  xp: number
+  coins: number
   streakDays: number
   enemyName: string
   enemyHp: number

@@ -24,9 +24,10 @@ async function checkCamera() {
   }
 }
 
-function resetDemo() {
+function resetLocalData() {
   store.resetDemo()
-  store.toast = 'デモデータを初期状態へ戻しました'
+  store.toast = 'この端末の保存データを初期化しました'
+  if (store.backendEnabled) void router.replace('/login')
 }
 
 function logout() {
@@ -69,7 +70,9 @@ function logout() {
         <div class="qr-place"><span aria-hidden="true">◫</span><div><strong>洗面所</strong><p>朝のアラーム解除</p></div><em>有効</em></div>
         <div class="qr-place"><span aria-hidden="true">▣</span><div><strong>PC前</strong><p>集中タスクの開始</p></div><em>有効</em></div>
         <div class="qr-place"><span aria-hidden="true">⌂</span><div><strong>玄関</strong><p>外出・運動の開始</p></div><em>有効</em></div>
-        <p class="helper-text">再発行すると古いQRは無効になります。実API接続後に利用できます。</p>
+        <p class="helper-text">
+          現在のバックエンドは、WASHROOM・DESK・ENTRANCEという文字列の一致で照合します。
+        </p>
       </section>
 
       <section class="card settings-section">
@@ -80,8 +83,8 @@ function logout() {
       </section>
 
       <section class="card settings-section settings-section--danger">
-        <h2>デモとアカウント</h2>
-        <button class="text-button" type="button" @click="resetDemo">デモデータを初期化</button>
+        <h2>端末データと接続</h2>
+        <button class="text-button" type="button" @click="resetLocalData">端末データを初期化</button>
         <button class="text-button text-button--danger" type="button" @click="logout">ログアウト</button>
       </section>
     </div>

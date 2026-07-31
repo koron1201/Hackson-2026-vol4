@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_db_and_tables
@@ -12,10 +14,16 @@ import auth_routes
 
 app = FastAPI(title="MorningQuest API")
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -64,18 +72,8 @@ def compat_game_state():
 
 
 @app.post('/scans/verify')
-def compat_scans_verify(payload: dict):
-    # Delegate to qr_routes.verify_scan logic if available
-    try:
-        return qr_routes.verify_scan(payload)
-    except Exception:
-        raw = payload.get('rawToken') or payload.get('scanned_qr_code')
-        task_id = payload.get('taskId')
-        verified = bool(raw)
-        task = None
-        if task_id:
-            task = {'id': task_id, 'title': 'タスク', 'status': 'STARTED'}
-        return {'verified': verified, 'task': task}
+def compat_scans_verify(payload: qr_routes.ScanVerifyRequest):
+    return qr_routes.verify_scan(payload)
 
 
 @app.get('/tasks')
