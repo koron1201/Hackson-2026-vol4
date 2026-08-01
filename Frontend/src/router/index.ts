@@ -40,6 +40,11 @@ export function createAppRouter(
         meta: { hideChrome: true },
       },
       {
+        path: '/ar-summon',
+        component: () => import('@/views/ArSummonView.vue'),
+        meta: { hideChrome: true },
+      },
+      {
         path: '/alarm/:alarmId',
         component: () => import('@/views/AlarmView.vue'),
         meta: { hideChrome: true },

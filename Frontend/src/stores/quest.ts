@@ -27,6 +27,8 @@ interface BattleResult {
   enemyHp: number
 }
 
+export type QrVerificationOutcome = 'VERIFIED' | 'MISMATCH' | 'UNAVAILABLE'
+
 type SessionErrorDisposition = 'stale' | 'unauthorized' | 'handled'
 
 interface QuestState {
@@ -257,24 +259,29 @@ function normalizeGameState(source: unknown, fallback: GameState): GameState {
   const game = asRecord(source)
   const numberOr = (key: string, defaultValue: number) =>
     typeof game[key] === 'number' && Number.isFinite(game[key]) ? game[key] : defaultValue
+  const isItemType = (value: unknown): value is InventoryItem['type'] =>
+    value === 'SPARK' || value === 'BLADE' || value === 'CRYSTAL'
+  const isItemState = (value: unknown): value is InventoryItem['state'] =>
+    value === 'PENDING' || value === 'AVAILABLE' || value === 'CONSUMED'
   const inventory = Array.isArray(game.inventory)
     ? game.inventory.filter((item): item is InventoryItem => {
         const value = asRecord(item)
         return (
-          typeof value.id === 'string' &&
-          typeof value.type === 'string' &&
-          typeof value.power === 'number' &&
-          typeof value.state === 'string' &&
-          typeof value.sourceTaskId === 'string'
+          typeof value.id === 'string' && value.id.trim().length > 0 &&
+          isItemType(value.type) &&
+          typeof value.power === 'number' && Number.isFinite(value.power) &&
+          isItemState(value.state) &&
+          typeof value.sourceTaskId === 'string' && value.sourceTaskId.trim().length > 0
         )
       })
     : fallback.inventory
+  const enemyName = typeof game.enemyName === 'string' ? game.enemyName.trim() : ''
 
   return {
     level: numberOr('level', fallback.level),
     coins: numberOr('coins', fallback.coins),
     streakDays: numberOr('streakDays', fallback.streakDays),
-    enemyName: typeof game.enemyName === 'string' ? game.enemyName : fallback.enemyName,
+    enemyName: enemyName || '紫の守護者',
     enemyHp: numberOr('enemyHp', fallback.enemyHp),
     enemyMaxHp: Math.max(1, numberOr('enemyMaxHp', fallback.enemyMaxHp)),
     inventory,
@@ -540,35 +547,43 @@ export const useQuestStore = defineStore('quest', {
       this.persist()
       return task
     },
-    async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
+    async verifyQrForTaskWithOutcome(
+      rawQrCode: string,
+      taskId: string,
+    ): Promise<QrVerificationOutcome> {
       const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
-      if (!task || task.status !== 'TODO') return false
+      if (!task || task.status !== 'TODO') return 'UNAVAILABLE'
 
       if (!this.backendEnabled) {
-        if (!rawQrCode.startsWith('mq1_') && rawQrCode !== 'demo') return false
-        return this.startTask(taskId)
+        if (!rawQrCode.startsWith('mq1_') && rawQrCode !== 'demo') return 'MISMATCH'
+        return (await this.startTask(taskId)) ? 'VERIFIED' : 'UNAVAILABLE'
       }
 
       const targetQrCode = placeToBackendQr(task.requiredPlace)
-      if (!targetQrCode) return this.startTask(taskId)
+      if (!targetQrCode) {
+        return (await this.startTask(taskId)) ? 'VERIFIED' : 'UNAVAILABLE'
+      }
 
       try {
         const result = await apiClient.verifyQr(rawQrCode, targetQrCode)
-        if (!this.isCurrentBackendSession(revision)) return false
+        if (!this.isCurrentBackendSession(revision)) return 'UNAVAILABLE'
         if (result.success !== true) {
           this.toast = 'QRコードが一致しません'
-          return false
+          return 'MISMATCH'
         }
-        return this.startTask(taskId)
+        return (await this.startTask(taskId)) ? 'VERIFIED' : 'UNAVAILABLE'
       } catch (reason) {
         this.handleSessionApiError(
           reason,
           revision,
           'QRコードを確認できません。通信状態を確認してください',
         )
-        return false
+        return 'UNAVAILABLE'
       }
+    },
+    async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
+      return (await this.verifyQrForTaskWithOutcome(rawQrCode, taskId)) === 'VERIFIED'
     },
     async removeTask(taskId: string): Promise<void> {
       const revision = this.sessionRevision

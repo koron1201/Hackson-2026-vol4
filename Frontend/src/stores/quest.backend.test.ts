@@ -767,6 +767,26 @@ describe('quest store in backend mode', () => {
     expect(store.toast).toContain('一致しません')
   })
 
+  it('QR照合の通信失敗を不一致と区別する', async () => {
+    apiMocks.verifyQr.mockRejectedValue(new Error('network error'))
+    const store = useQuestStore()
+    store.plan.tasks.push({
+      id: '12',
+      title: '資料を作る',
+      taskType: 'DAILY',
+      category: 'PC_WORK',
+      status: 'TODO',
+      estimatedMinutes: 45,
+      weight: 3,
+      requiredPlace: 'PC',
+      scheduledWindow: 'DAYTIME',
+    })
+
+    await expect(store.verifyQrForTaskWithOutcome('DESK', '12')).resolves.toBe('UNAVAILABLE')
+    expect(store.tasks[0]?.status).toBe('TODO')
+    expect(store.toast).toContain('通信状態')
+  })
+
   it('通信失敗時はタスク状態を完了にしない', async () => {
     apiMocks.completeTask.mockRejectedValue(new Error('network error'))
     const store = useQuestStore()
@@ -951,5 +971,24 @@ describe('quest store in backend mode', () => {
     expect(store.plan.wakeTime).toBe('06:30')
     expect(store.tasks[0]?.requiredPlace).toBe('PC')
     expect(store.game.enemyHp).toBe(10)
+  })
+
+  it('不正なゲーム素材データを除外し、空の敵名を安全な表示名へ置き換える', async () => {
+    apiMocks.getPlan.mockResolvedValue({ tasks: [] })
+    apiMocks.getGameState.mockResolvedValue({
+      enemyName: '   ',
+      inventory: [
+        { id: 'valid-item', type: 'SPARK', power: 15, state: 'AVAILABLE', sourceTaskId: 'task-1' },
+        { id: 'unknown-type', type: 'UNKNOWN', power: 20, state: 'AVAILABLE', sourceTaskId: 'task-2' },
+        { id: 'unknown-state', type: 'CRYSTAL', power: 20, state: 'UNKNOWN', sourceTaskId: 'task-3' },
+      ],
+    })
+    const store = useQuestStore()
+    store.isAuthenticated = true
+
+    await store.hydrate()
+
+    expect(store.game.enemyName).toBe('紫の守護者')
+    expect(store.game.inventory.map((item) => item.id)).toEqual(['valid-item'])
   })
 })

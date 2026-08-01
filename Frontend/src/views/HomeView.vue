@@ -30,7 +30,17 @@ const greeting = computed(() => {
   return greetings[phase.value]
 })
 
+const allTasksDone = computed(
+  () => store.tasks.length > 0 && store.tasks.every((task) => task.status === 'DONE'),
+)
+
 const heroMessage = computed(() => {
+  if (store.tasks.length === 0) return '今日の計画を作って、冒険の準備を始めよう！'
+  if (!store.nextTask) {
+    return allTasksDone.value
+      ? '今日のノルマ達成！ 夜のバトルへ行こう。'
+      : '今日はここまで。明日のクエストに備えよう！'
+  }
   if (store.progress.percentage >= 80) return '今日のノルマ達成！ 夜のバトルへ行こう。'
   const remaining = store.progress.totalCount - store.progress.completedCount
   return remaining > 0 ? `あと${remaining}つ。次の一歩を一緒に進めよう！` : '今日もよく頑張ったね！'
@@ -48,6 +58,31 @@ const riskText = computed(() => {
 const bedtimeCountdown = computed(() => {
   const remainingMinutes = minutesUntilClock(store.plan.sleepTime, now.value)
   return remainingMinutes > 0 ? `就寝まであと${formatMinutes(remainingMinutes)}` : '就寝時刻です'
+})
+
+const placeLabel = computed(() => {
+  const labels = {
+    WASHROOM: '洗面所',
+    PC: 'PC前',
+    ENTRANCE: '玄関',
+    NONE: '場所指定なし',
+  }
+  return store.nextTask ? labels[store.nextTask.requiredPlace] : ''
+})
+
+const missionStatus = computed(() => (store.nextTask?.status === 'STARTED' ? '進行中' : '未着手'))
+
+const missionHeading = computed(() => {
+  if (store.nextTask) return '次にやること'
+  if (store.tasks.length === 0) return '今日の計画を作ろう'
+  return allTasksDone.value ? '本日のミッション完了' : '今日はここまで'
+})
+
+const missionCtaLabel = computed(() => {
+  const task = store.nextTask
+  if (!task) return ''
+  if (task.status === 'STARTED') return 'タスク一覧で続ける'
+  return task.requiredPlace === 'NONE' ? 'クエストを始める' : 'QRをスキャンする'
 })
 
 onMounted(() => {
@@ -80,10 +115,6 @@ async function openNextTask() {
         <p class="eyebrow">{{ new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' }) }}</p>
         <h1>{{ greeting }}、{{ store.userName }}さん</h1>
       </div>
-      <button class="notification-button" type="button" aria-label="通知履歴">
-        ♢
-        <span>2</span>
-      </button>
     </section>
 
     <section class="phase-switcher" aria-label="表示フェーズ">
@@ -92,6 +123,7 @@ async function openNextTask() {
         :key="item"
         type="button"
         :class="{ active: phase === item }"
+        :aria-pressed="phase === item"
         @click="store.setPhaseOverride(item)"
       >
         {{ phaseLabel[item] }}
@@ -100,24 +132,6 @@ async function openNextTask() {
     </section>
 
     <div class="home-grid">
-      <section class="hero-card">
-        <div class="hero-card__copy">
-          <span class="quest-chip">{{ phaseLabel[phase] }}のクエスト</span>
-          <h2>{{ heroMessage }}</h2>
-          <p v-if="store.nextTask">
-            次は「{{ store.nextTask.title }}」 · {{ store.nextTask.estimatedMinutes }}分
-          </p>
-          <button class="button button--hero" type="button" :disabled="!store.nextTask" @click="openNextTask">
-            {{ store.nextTask?.requiredPlace === 'NONE' ? 'クエストを始める' : 'QRをスキャンする' }}
-            <span aria-hidden="true">→</span>
-          </button>
-        </div>
-        <div class="hero-card__visual" aria-hidden="true">
-          <div class="sun-orbit"></div>
-          <img src="/assets/hero.png" alt="" />
-        </div>
-      </section>
-
       <section class="card progress-card">
         <div class="section-heading">
           <div>
@@ -151,22 +165,26 @@ async function openNextTask() {
         </div>
       </section>
 
-      <section class="card next-card" v-if="store.nextTask">
+      <section class="card mission-card">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">NEXT QUEST</p>
-            <h2>次にやること</h2>
+            <p class="eyebrow">DAILY MISSION</p>
+            <h2>{{ missionHeading }}</h2>
           </div>
-          <span class="status-dot">未着手</span>
+          <span v-if="store.nextTask" class="status-dot" :class="{ 'status-dot--started': store.nextTask.status === 'STARTED' }">{{ missionStatus }}</span>
         </div>
-        <div class="next-card__content">
+        <div v-if="store.nextTask" class="mission-card__content">
           <span class="quest-icon" aria-hidden="true">{{ store.nextTask.requiredPlace === 'PC' ? '▣' : '⌖' }}</span>
           <div>
             <h3>{{ store.nextTask.title }}</h3>
-            <p>★{{ store.nextTask.weight }} · {{ store.nextTask.estimatedMinutes }}分 · QR {{ store.nextTask.requiredPlace }}</p>
+            <p>{{ placeLabel }} · {{ store.nextTask.estimatedMinutes }}分 · 重み{{ store.nextTask.weight }}</p>
           </div>
-          <button class="button button--square" type="button" @click="openNextTask" aria-label="このクエストを開始">→</button>
+          <button class="button mission-card__cta" type="button" :aria-label="`${store.nextTask.title}：${missionCtaLabel}`" @click="openNextTask">
+            {{ missionCtaLabel }}
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
+        <RouterLink v-else-if="store.tasks.length === 0" class="button mission-card__cta" to="/plan">計画を作る</RouterLink>
       </section>
 
       <section class="card forecast-card">
@@ -183,7 +201,19 @@ async function openNextTask() {
         </div>
       </section>
 
-      <section v-if="store.backendEnabled" class="card next-card">
+      <section class="companion-banner">
+        <div class="companion-banner__copy">
+          <span class="quest-chip">{{ phaseLabel[phase] }}のクエスト</span>
+          <h2>{{ heroMessage }}</h2>
+          <p v-if="store.nextTask">次は「{{ store.nextTask.title }}」 · {{ store.nextTask.estimatedMinutes }}分</p>
+        </div>
+        <div class="companion-banner__visual" aria-hidden="true">
+          <div class="sun-orbit"></div>
+          <img :src="'/assets/hero.png'" alt="" />
+        </div>
+      </section>
+
+      <section v-if="store.backendEnabled" class="card backend-reward-card">
         <div class="section-heading">
           <div>
             <p class="eyebrow">BACKEND REWARD</p>
@@ -195,7 +225,9 @@ async function openNextTask() {
       </section>
 
       <section v-else class="battle-teaser">
-        <div class="battle-teaser__enemy" aria-hidden="true">🧌</div>
+        <div class="battle-teaser__enemy" aria-hidden="true">
+          <img :src="'/assets/enemy-purple-ogre.png'" alt="" />
+        </div>
         <div class="battle-teaser__body">
           <p class="eyebrow">TONIGHT'S BATTLE</p>
           <h2>{{ store.game.enemyName }}</h2>
