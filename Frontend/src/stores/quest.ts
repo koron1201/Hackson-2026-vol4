@@ -395,10 +395,10 @@ function safeAnalysis(
     Number.isInteger(analysis.estimated_minutes) &&
     analysis.estimated_minutes >= 1 &&
     analysis.estimated_minutes <= 1440
-       ? analysis.estimated_minutes
-       : selectedPlace === 'PC'
-         ? 45
-         : 20
+      ? analysis.estimated_minutes
+      : selectedPlace === 'PC'
+        ? 45
+        : 20
   const suggestedPlace = backendQrToPlace(analysis?.recommended_qr)
   return {
     category: normalizeCategory(analysis?.category),
@@ -671,6 +671,7 @@ export const useQuestStore = defineStore('quest', {
     async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
       return (await this.verifyQrForTaskWithOutcome(rawQrCode, taskId)) === 'VERIFIED'
     },
+
     async removeTask(taskId: string): Promise<void> {
       const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
@@ -698,6 +699,7 @@ export const useQuestStore = defineStore('quest', {
         }
       }
     },
+
     async savePlan(wakeTime: string, sleepTime: string): Promise<void> {
       const revision = this.sessionRevision
       this.plan.wakeTime = wakeTime
@@ -869,9 +871,25 @@ export const useQuestStore = defineStore('quest', {
     async hydrate(): Promise<void> {
       if (this.backendEnabled) {
         localStorage.removeItem(persistenceKey(true))
+        const revision = this.sessionRevision
+
+        const savedToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+        if (savedToken && !this.isAuthenticated) {
+          try {
+            const user = await apiClient.me()
+            if (revision === this.sessionRevision) {
+              this.userName = user.name || 'Hero'
+              this.isAuthenticated = true
+            }
+          } catch {
+            setAccessToken(null)
+            this.logoutBackendSession()
+            return
+          }
+        }
+
         if (!this.isAuthenticated) return
 
-        const revision = this.sessionRevision
         try {
           const [plan, game] = await Promise.all([
             apiClient.getPlan(this.plan.localDate),
