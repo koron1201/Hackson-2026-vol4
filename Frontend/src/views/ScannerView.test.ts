@@ -7,8 +7,9 @@ import ScannerView from './ScannerView.vue'
 
 const routerMocks = vi.hoisted(() => ({
   back: vi.fn(),
+  push: vi.fn(),
   replace: vi.fn(),
-  route: { query: { taskId: 'target-task' } },
+  route: { query: { taskId: 'target-task' } as Record<string, string> },
 }))
 
 const zxingMocks = vi.hoisted(() => ({
@@ -18,8 +19,12 @@ const zxingMocks = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => routerMocks.route,
-  useRouter: () => ({ back: routerMocks.back, replace: routerMocks.replace }),
+  useRouter: () => ({ back: routerMocks.back, push: routerMocks.push, replace: routerMocks.replace }),
 }))
+
+const alarmAudioMocks = vi.hoisted(() => ({ stopAlarmAudio: vi.fn() }))
+
+vi.mock('@/services/alarmAudio', () => alarmAudioMocks)
 
 vi.mock('@zxing/browser', () => ({
   BrowserQRCodeReader: class {
@@ -120,7 +125,10 @@ describe('ScannerView', () => {
     vibrate = vi.fn()
     Object.defineProperty(navigator, 'vibrate', { configurable: true, value: vibrate })
     routerMocks.back.mockReset()
+    routerMocks.push.mockReset()
     routerMocks.replace.mockReset()
+    routerMocks.route.query = { taskId: 'target-task' }
+    alarmAudioMocks.stopAlarmAudio.mockReset()
     zxingMocks.listVideoInputDevices.mockReset().mockResolvedValue([
       { deviceId: 'rear-camera', label: 'Back Camera' },
     ])
@@ -170,6 +178,21 @@ describe('ScannerView', () => {
 
     expect(verify).toHaveBeenCalledTimes(1)
     expect(routerMocks.replace).toHaveBeenCalledTimes(1)
+  })
+
+  it('アラーム由来では正しいQRの検証成功時だけアラーム音を止める', async () => {
+    routerMocks.route.query = { taskId: 'target-task', alarm: '1' }
+    const { store } = await mountScanner()
+    vi.spyOn(store, 'verifyQrForTaskWithOutcome').mockResolvedValueOnce('MISMATCH').mockResolvedValueOnce('VERIFIED')
+    const callback = scanCallback()
+
+    callback?.({ getText: () => 'wrong-value' })
+    await flushPromises()
+    expect(alarmAudioMocks.stopAlarmAudio).not.toHaveBeenCalled()
+
+    callback?.({ getText: () => 'right-value' })
+    await flushPromises()
+    expect(alarmAudioMocks.stopAlarmAudio).toHaveBeenCalledOnce()
   })
 
   it('不一致では警告を示し、カメラと画面を維持して再試行できる', async () => {

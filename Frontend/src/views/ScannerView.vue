@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
 import { useQuestStore } from '@/stores/quest'
 import type { QuestTask } from '@/domain/types'
+import { stopAlarmAudio } from '@/services/alarmAudio'
 
 const route = useRoute()
 const router = useRouter()
@@ -115,6 +116,7 @@ async function verify(rawToken: string) {
   status.value = 'success'
   errorMessage.value = ''
   stopCamera()
+  if (route.query.alarm === '1') stopAlarmAudio()
   navigator.vibrate?.(120)
   successTimer = window.setTimeout(() => {
     successTimer = undefined
