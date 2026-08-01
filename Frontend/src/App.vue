@@ -1,29 +1,31 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import BottomNav from '@/components/BottomNav.vue'
 import ToastNotice from '@/components/ToastNotice.vue'
+import { phaseFromHour } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
 
 const route = useRoute()
-const router = useRouter()
 const store = useQuestStore()
 
 const hideChrome = computed(() => Boolean(route.meta.hideChrome))
+const activePhase = computed(() =>
+  store.phaseOverride ?? phaseFromHour(new Date(store.clockTick).getHours()),
+)
 
 function syncNetworkState() {
   store.setOffline(!navigator.onLine)
 }
 
 onMounted(() => {
-  store.hydrate()
-  store.startClock()
+  void store.hydrate().finally(() => {
+    store.startClock()
+  })
   syncNetworkState()
   window.addEventListener('online', syncNetworkState)
   window.addEventListener('offline', syncNetworkState)
-
-  if (!store.isAuthenticated && !route.meta.public) void router.replace('/login')
 })
 
 onBeforeUnmount(() => {
@@ -33,7 +35,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-frame" :class="{ 'app-frame--immersive': hideChrome }">
+  <div
+    class="app-frame"
+    :class="[`app-frame--${activePhase}`, { 'app-frame--immersive': hideChrome }]"
+    :data-phase="activePhase"
+  >
     <div v-if="store.isOffline" class="offline-banner" role="status">
       オフラインです。操作は端末に保持され、再接続後に同期されます。
     </div>

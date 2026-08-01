@@ -3,6 +3,7 @@ import {
   calculateProgress,
   estimateBattleDamage,
   forecastDay,
+  phaseFromHour,
   validatePlanDraft,
 } from './quest'
 import type { QuestTask } from './types'
@@ -74,6 +75,23 @@ describe('forecastDay', () => {
 
   it('利用率が70%を超え100%以下ならMEDIUMを返す', () => {
     expect(forecastDay(tasks, 110).riskLevel).toBe('MEDIUM')
+  })
+})
+
+describe('phaseFromHour', () => {
+  it.each([
+    [0, 'morning'],
+    [8, 'morning'],
+    [9, 'daytime'],
+    [19, 'daytime'],
+    [20, 'night'],
+    [23, 'night'],
+  ])('時刻%d時を%sフェーズに分類する', (hour, expected) => {
+    expect(phaseFromHour(hour)).toBe(expected)
+  })
+
+  it('24時を朝として扱う', () => {
+    expect(phaseFromHour(24)).toBe('morning')
   })
 })
 

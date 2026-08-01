@@ -25,13 +25,14 @@ async function checkCamera() {
 }
 
 function resetLocalData() {
-  store.resetDemo()
+  store.resetLocalData()
   store.toast = 'この端末の保存データを初期化しました'
   if (store.backendEnabled) void router.replace('/login')
 }
 
 function logout() {
-  store.setAuthenticated(false)
+  if (store.backendEnabled) store.logoutBackendSession()
+  else store.setAuthenticated(false)
   void router.replace('/login')
 }
 </script>

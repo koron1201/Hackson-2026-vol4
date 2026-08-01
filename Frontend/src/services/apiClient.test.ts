@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ApiError, createApiClient } from './apiClient'
+import { ApiError, createApiClient, setAccessToken } from './apiClient'
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -23,6 +23,27 @@ describe('backend API client', () => {
       'http://localhost:8000/',
       expect.objectContaining({ credentials: 'omit' }),
     )
+  })
+
+  it('メモリ上のaccess tokenで現在の利用者を検証する', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ id: 1, name: 'ゆうき', email: 'you@example.com' }),
+    )
+    const client = createApiClient('http://localhost:8000', fetcher)
+    setAccessToken('test-access-token')
+
+    try {
+      await expect(client.me()).resolves.toEqual({
+        id: 1,
+        name: 'ゆうき',
+        email: 'you@example.com',
+      })
+      const request = fetcher.mock.calls[0]?.[1]
+      expect(fetcher.mock.calls[0]?.[0]).toBe('http://localhost:8000/auth/me')
+      expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer test-access-token')
+    } finally {
+      setAccessToken(null)
+    }
   })
 
   it('バックエンド形式でタスクを作成する', async () => {
