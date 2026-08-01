@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel
 from sqlmodel import select
 from database import get_session
 from models import User
@@ -9,42 +9,20 @@ import os
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret')
 ALGORITHM = 'HS256'
 ACCESS_TOKEN_EXPIRE_SECONDS = 60 * 15
 
 
 class RegisterRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    email: str = Field(min_length=3, max_length=320)
-    password: str = Field(min_length=8, max_length=128)
-
-    @field_validator('email')
-    @classmethod
-    def normalize_email(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if '@' not in normalized or normalized.startswith('@') or normalized.endswith('@'):
-            raise ValueError('Invalid email address')
-        return normalized
+    name: str
+    email: str
+    password: str
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
-    password: str = Field(min_length=8, max_length=128)
-
-    @field_validator('email')
-    @classmethod
-    def normalize_email(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if '@' not in normalized or normalized.startswith('@') or normalized.endswith('@'):
-            raise ValueError('Invalid email address')
-        return normalized
-
-
-def signing_key() -> str:
-    if not SECRET_KEY:
-        raise RuntimeError('SECRET_KEY is not configured')
-    return SECRET_KEY
+    email: str
+    password: str
 
 
 def create_access_token(data: dict) -> str:
@@ -53,7 +31,7 @@ def create_access_token(data: dict) -> str:
     import time
 
     to_encode.update({"exp": int(time.time()) + ACCESS_TOKEN_EXPIRE_SECONDS})
-    return jwt.encode(to_encode, signing_key(), algorithm=ALGORITHM)
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 @router.post('/register')
@@ -91,7 +69,7 @@ def me(request: Request, session=Depends(get_session)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Missing credentials')
     token = auth.split(' ', 1)[1]
     try:
-        payload = jwt.decode(token, signing_key(), algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload.get('sub'))
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token')
