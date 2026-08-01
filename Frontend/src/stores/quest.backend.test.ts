@@ -767,6 +767,33 @@ describe('quest store in backend mode', () => {
     expect(store.toast).toContain('一致しません')
   })
 
+  it('AI提案に失敗してもルール候補を返し、通常追加を妨げない', async () => {
+    apiMocks.analyzeTask.mockRejectedValue(new Error('AI unavailable'))
+    const store = useQuestStore()
+
+    await expect(store.suggestTask('散歩する', 'ENTRANCE')).resolves.toMatchObject({
+      source: 'RULE',
+      requiredPlace: 'ENTRANCE',
+      estimatedMinutes: 20,
+    })
+  })
+
+  it('ユーザーが指定した所要時間はAI提案より優先する', async () => {
+    apiMocks.analyzeTask.mockResolvedValue({
+      category: 'PC_WORK',
+      estimated_minutes: 10,
+      recommended_qr: 'DESK',
+    })
+    apiMocks.createTask.mockImplementation(async (input) => ({ id: 15, ...input }))
+    const store = useQuestStore()
+
+    await store.addTask('資料を作る', 'PC', 90)
+
+    expect(apiMocks.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ estimated_minutes: 90, recommended_qr: 'DESK' }),
+    )
+  })
+
   it('QR照合の通信失敗を不一致と区別する', async () => {
     apiMocks.verifyQr.mockRejectedValue(new Error('network error'))
     const store = useQuestStore()

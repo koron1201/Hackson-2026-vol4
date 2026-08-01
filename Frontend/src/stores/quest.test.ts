@@ -119,6 +119,31 @@ describe('quest store', () => {
     })
   })
 
+  it('ユーザーが指定した所要時間をそのままタスクへ保存する', async () => {
+    const store = useQuestStore()
+
+    const task = await store.addTask('読書する', 'NONE', 75)
+
+    expect(task).toMatchObject({
+      title: '読書する',
+      estimatedMinutes: 75,
+      weight: 4,
+    })
+  })
+
+  it('日付が変わると既定の習慣タスクを重複なく翌日分へ追加する', () => {
+    const store = useQuestStore()
+    store.plan.localDate = '2026-07-31'
+    store.plan.tasks = []
+
+    expect(store.ensureDailyHabits('2026-08-01')).toBe(true)
+    expect(store.plan).toMatchObject({ localDate: '2026-08-01' })
+    expect(store.tasks.map((task) => task.title)).toEqual(['歯を磨く', '朝食を食べる'])
+    expect(store.tasks.every((task) => task.status === 'TODO')).toBe(true)
+    expect(store.ensureDailyHabits('2026-08-01')).toBe(false)
+    expect(store.tasks).toHaveLength(2)
+  })
+
   it('未完了タスクだけ削除できる', async () => {
     const store = useQuestStore()
     const initialCount = store.tasks.length

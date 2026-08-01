@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuestStore } from '@/stores/quest'
+import { isAlarmAudioActive, startAlarmAudio, stopAlarmAudio } from '@/services/alarmAudio'
 
 const router = useRouter()
 const store = useQuestStore()
@@ -11,46 +12,26 @@ const emergencyAvailable = ref(false)
 const emergencyProgress = ref(0)
 let timeTimer: ReturnType<typeof setInterval> | undefined
 let emergencyTimer: ReturnType<typeof setInterval> | undefined
-let audioContext: AudioContext | undefined
-let oscillator: OscillatorNode | undefined
-let gain: GainNode | undefined
-let wakeLock: WakeLockSentinel | undefined
 
 const timeText = computed(() =>
   currentTime.value.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
 )
 
 async function startAlarm() {
-  if (audioStarted.value) return
-  audioStarted.value = true
-  audioContext = new AudioContext()
-  oscillator = audioContext.createOscillator()
-  gain = audioContext.createGain()
-  oscillator.type = 'sine'
-  oscillator.frequency.value = 640
-  gain.gain.value = 0.12
-  oscillator.connect(gain).connect(audioContext.destination)
-  oscillator.start()
-  navigator.vibrate?.([400, 200, 400])
-  try {
-    wakeLock = await navigator.wakeLock?.request('screen')
-  } catch {
-    // Wake Lock非対応でもアラーム画面は継続する。
-  }
+  audioStarted.value = await startAlarmAudio()
 }
 
 function stopAlarm() {
-  oscillator?.stop()
-  audioContext?.close()
-  navigator.vibrate?.(0)
-  void wakeLock?.release()
+  stopAlarmAudio()
+  audioStarted.value = false
 }
 
 function scan() {
-  stopAlarm()
-  const target = store.tasks.find((task) => task.requiredPlace === 'WASHROOM' && task.status === 'TODO')
+  const target =
+    store.tasks.find((task) => task.requiredPlace === 'WASHROOM' && task.status === 'TODO') ??
+    store.nextTask
   if (target) void router.push({ path: '/scanner', query: { taskId: target.id, alarm: '1' } })
-  else void router.push({ path: '/scanner', query: { taskId: store.nextTask?.id } })
+  else store.toast = '解除するタスクが見つかりません。計画を確認してください。'
 }
 
 function beginEmergencyHold() {
@@ -73,6 +54,7 @@ function cancelEmergencyHold() {
 }
 
 onMounted(() => {
+  audioStarted.value = isAlarmAudioActive()
   timeTimer = window.setInterval(() => {
     currentTime.value = new Date()
   }, 1000)
@@ -84,7 +66,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (timeTimer) clearInterval(timeTimer)
   cancelEmergencyHold()
-  stopAlarm()
 })
 </script>
 

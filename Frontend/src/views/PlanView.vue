@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { validatePlanDraft } from '@/domain/quest'
 import { useQuestStore } from '@/stores/quest'
-import type { PlaceType } from '@/domain/types'
+import type { PlaceType, TaskCategory } from '@/domain/types'
 
 const store = useQuestStore()
 const router = useRouter()
@@ -11,9 +11,11 @@ const wakeTime = ref(store.plan.wakeTime)
 const sleepTime = ref(store.plan.sleepTime)
 const newTask = ref('')
 const newTaskPlace = ref<PlaceType>('NONE')
+const newTaskMinutes = ref('')
 const errors = ref<string[]>([])
 const addingTask = ref(false)
 const aiSuggested = ref(false)
+const suggestion = ref<{ category: TaskCategory; source: 'AI' | 'RULE' } | null>(null)
 
 const totalMinutes = computed(() =>
   store.tasks.reduce((total, task) => total + task.estimatedMinutes, 0),
@@ -25,13 +27,20 @@ async function addTask() {
     errors.value = ['タスク名を入力してください']
     return
   }
+  const minutes = newTaskMinutes.value === '' ? undefined : Number(newTaskMinutes.value)
+  if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 5 || minutes > 240)) {
+    errors.value = ['所要時間は5〜240分の整数で入力してください']
+    return
+  }
   addingTask.value = true
   errors.value = []
   try {
-    await store.addTask(title, newTaskPlace.value)
+    await store.addTask(title, newTaskPlace.value, minutes, suggestion.value?.category)
     newTask.value = ''
     newTaskPlace.value = 'NONE'
+    newTaskMinutes.value = ''
     aiSuggested.value = false
+    suggestion.value = null
   } catch {
     errors.value = ['タスクを登録できませんでした。通信状態を確認して再試行してください。']
   } finally {
@@ -39,7 +48,27 @@ async function addTask() {
   }
 }
 
-function suggestWithRules() {
+async function suggestWithRules() {
+  const title = newTask.value.trim()
+  if (!title) {
+    errors.value = ['AI提案を受けるタスク名を入力してください']
+    return
+  }
+  addingTask.value = true
+  errors.value = []
+  try {
+    const result = await store.suggestTask(title, newTaskPlace.value)
+    newTaskPlace.value = result.requiredPlace
+    newTaskMinutes.value = String(result.estimatedMinutes)
+    suggestion.value = { category: result.category, source: result.source }
+  } catch {
+    errors.value = ['AI提案を取得できませんでした。内容を入力して通常追加できます。']
+  } finally {
+    addingTask.value = false
+  }
+}
+
+function markSuggestionsForReview() {
   aiSuggested.value = true
   errors.value = []
 }
@@ -103,7 +132,7 @@ async function removeTask(taskId: string) {
               <p class="eyebrow">QUESTS</p>
               <h2>明日のクエスト</h2>
             </div>
-            <button class="text-button" type="button" @click="suggestWithRules">
+            <button class="text-button" type="button" @click="markSuggestionsForReview">
               ✦ AIでまとめて提案
             </button>
           </div>
@@ -137,9 +166,26 @@ async function removeTask(taskId: string) {
                 <option value="ENTRANCE">玄関</option>
               </select>
             </label>
-            <button class="button button--outline" type="button" :disabled="addingTask" @click="addTask">
-              {{ addingTask ? '登録中…' : store.backendEnabled ? '✦ AI分析して追加' : '＋ 追加する' }}
+            <label>
+              <span>所要時間（分）</span>
+              <input v-model="newTaskMinutes" type="number" min="5" max="240" step="5" placeholder="AI/既定値" />
+            </label>
+            <button
+              v-if="store.backendEnabled"
+              class="button button--outline"
+              type="button"
+              :disabled="addingTask"
+              @click="suggestWithRules"
+            >
+              AIで提案
             </button>
+            <button class="button button--outline" type="button" :disabled="addingTask" @click="addTask">
+              {{ addingTask ? '登録中…' : '＋ 追加する' }}
+            </button>
+            <p v-if="suggestion" class="helper-text">
+              {{ suggestion.source === 'AI' ? 'AI候補' : 'ルール候補（AIなし）' }}：{{ suggestion.category }}
+              · 内容は追加前に編集できます。
+            </p>
           </div>
         </section>
       </div>

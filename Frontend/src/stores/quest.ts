@@ -28,6 +28,12 @@ interface BattleResult {
 }
 
 export type QrVerificationOutcome = 'VERIFIED' | 'MISMATCH' | 'UNAVAILABLE'
+export interface TaskSuggestion {
+  category: TaskCategory
+  estimatedMinutes: number
+  requiredPlace: PlaceType
+  source: 'AI' | 'RULE'
+}
 
 type SessionErrorDisposition = 'stale' | 'unauthorized' | 'handled'
 
@@ -123,8 +129,49 @@ const demoInventory: InventoryItem[] = [
   },
 ]
 
+const defaultHabitTemplates: Array<
+  Pick<QuestTask, 'title' | 'category' | 'estimatedMinutes' | 'weight' | 'requiredPlace' | 'scheduledWindow'>
+> = [
+  {
+    title: '歯を磨く',
+    category: 'HYGIENE',
+    estimatedMinutes: 5,
+    weight: 1,
+    requiredPlace: 'WASHROOM',
+    scheduledWindow: 'MORNING',
+  },
+  {
+    title: '朝食を食べる',
+    category: 'MEAL',
+    estimatedMinutes: 20,
+    weight: 2,
+    requiredPlace: 'NONE',
+    scheduledWindow: 'MORNING',
+  },
+]
+
+function createDailyHabits(localDate: string): QuestTask[] {
+  return defaultHabitTemplates.map((template, index) => ({
+    ...template,
+    id: `habit-${localDate}-${index + 1}`,
+    taskType: 'HABIT',
+    status: 'TODO',
+  }))
+}
+
+function currentLocalDate(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+
 function createDemoState(): Omit<QuestState, 'backendEnabled' | 'isOffline'> {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = currentLocalDate()
 
   return {
     sessionRevision: 0,
@@ -304,7 +351,7 @@ function backendTaskToQuestTask(task: BackendTask): QuestTask {
 }
 
 function createBackendState(): QuestState {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = currentLocalDate()
   return {
     backendEnabled: true,
     sessionRevision: 0,
@@ -338,7 +385,11 @@ function persistenceKey(backendEnabled: boolean): string {
   return backendEnabled ? 'morningquest-backend' : 'morningquest-demo'
 }
 
-function safeAnalysis(analysis: TaskAnalysisResponse | null, selectedPlace: PlaceType) {
+function safeAnalysis(
+  analysis: TaskAnalysisResponse | null,
+  selectedPlace: PlaceType,
+  selectedMinutes?: number,
+) {
   const estimatedMinutes =
     typeof analysis?.estimated_minutes === 'number' &&
     Number.isInteger(analysis.estimated_minutes) &&
@@ -348,11 +399,11 @@ function safeAnalysis(analysis: TaskAnalysisResponse | null, selectedPlace: Plac
       : selectedPlace === 'PC'
         ? 45
         : 20
-
+  const suggestedPlace = backendQrToPlace(analysis?.recommended_qr)
   return {
     category: normalizeCategory(analysis?.category),
-    estimatedMinutes,
-    requiredPlace: selectedPlace, // ユーザー指定（NONE含む）を最優先
+    estimatedMinutes: selectedMinutes ?? estimatedMinutes,
+    requiredPlace: selectedPlace === 'NONE' ? suggestedPlace : selectedPlace,
   }
 }
 
@@ -492,22 +543,58 @@ export const useQuestStore = defineStore('quest', {
       this.persist()
       return true
     },
-    async addTask(title: string, requiredPlace: PlaceType = 'NONE'): Promise<QuestTask> {
+    async suggestTask(title: string, selectedPlace: PlaceType = 'NONE'): Promise<TaskSuggestion> {
       const normalizedTitle = title.trim().slice(0, 120)
       if (!normalizedTitle) throw new Error('タスク名を入力してください。')
+      if (!this.backendEnabled) {
+        return { ...safeAnalysis(null, selectedPlace), source: 'RULE' }
+      }
+
+      const revision = this.sessionRevision
+      try {
+        const analysis = await apiClient.analyzeTask(normalizedTitle)
+        if (!this.isCurrentBackendSession(revision)) throw this.sessionChangedError()
+        return {
+          ...safeAnalysis(analysis, selectedPlace),
+          source: analysis.note ? 'RULE' : 'AI',
+        }
+      } catch (reason) {
+        const disposition = this.handleSessionApiError(reason, revision, '')
+        if (disposition === 'stale' || disposition === 'unauthorized') throw reason
+        return { ...safeAnalysis(null, selectedPlace), source: 'RULE' }
+      }
+    },
+    async addTask(
+      title: string,
+      requiredPlace: PlaceType = 'NONE',
+      estimatedMinutes?: number,
+      suggestedCategory?: TaskCategory,
+    ): Promise<QuestTask> {
+      const normalizedTitle = title.trim().slice(0, 120)
+      if (!normalizedTitle) throw new Error('タスク名を入力してください。')
+      if (
+        estimatedMinutes !== undefined &&
+        (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 5 || estimatedMinutes > 240)
+      ) {
+        throw new Error('所要時間は5〜240分の整数で入力してください。')
+      }
 
       if (this.backendEnabled) {
         const revision = this.sessionRevision
         let analysis: TaskAnalysisResponse | null = null
-        try {
-          analysis = await apiClient.analyzeTask(normalizedTitle)
-          if (!this.isCurrentBackendSession(revision)) throw this.sessionChangedError()
-        } catch (reason) {
-          const disposition = this.handleSessionApiError(reason, revision, '')
-          if (disposition === 'stale') throw this.sessionChangedError()
-          if (disposition === 'unauthorized') throw reason
+        if (!suggestedCategory) {
+          try {
+            analysis = await apiClient.analyzeTask(normalizedTitle)
+            if (!this.isCurrentBackendSession(revision)) throw this.sessionChangedError()
+          } catch (reason) {
+            const disposition = this.handleSessionApiError(reason, revision, '')
+            if (disposition === 'stale') throw this.sessionChangedError()
+            if (disposition === 'unauthorized') throw reason
+            // AIが利用できない場合も決定論的な既定値で作成を続ける。
+          }
         }
-        const normalized = safeAnalysis(analysis, requiredPlace)
+        const normalized = safeAnalysis(analysis, requiredPlace, estimatedMinutes)
+        if (suggestedCategory) normalized.category = suggestedCategory
         let created: BackendTask
         try {
           created = await apiClient.createTask({
@@ -537,8 +624,8 @@ export const useQuestStore = defineStore('quest', {
         taskType: 'DAILY',
         category: requiredPlace === 'PC' ? 'PC_WORK' : 'OTHER',
         status: 'TODO',
-        estimatedMinutes: requiredPlace === 'PC' ? 45 : 20,
-        weight: requiredPlace === 'PC' ? 3 : 2,
+        estimatedMinutes: estimatedMinutes ?? (requiredPlace === 'PC' ? 45 : 20),
+        weight: weightForMinutes(estimatedMinutes ?? (requiredPlace === 'PC' ? 45 : 20)),
         requiredPlace,
         scheduledWindow: 'DAYTIME',
       }
@@ -585,33 +672,30 @@ export const useQuestStore = defineStore('quest', {
       return (await this.verifyQrForTaskWithOutcome(rawQrCode, taskId)) === 'VERIFIED'
     },
 
-    /**
-     * 💡【修正点】消せないタスクを確実に削除するロジック
-     */
     async removeTask(taskId: string): Promise<void> {
       const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
-      if (!task) return
+      if (!task || task.status === 'DONE') return
 
-      // まずフロントエンドの画面から確実に消す
+      const previousTasks = [...this.plan.tasks]
       this.plan.tasks = this.plan.tasks.filter((item) => item.id !== taskId)
       this.persist()
 
-      // バックエンド連携が有効な場合
       if (this.backendEnabled) {
-        // 数値IDかチェック（文字列IDの場合はAPIコールをスキップ）
-        const isBackendId = !isNaN(Number(taskId)) && Number(taskId) > 0
-
-        if (isBackendId) {
-          try {
-            await apiClient.deleteTask(taskId)
-            if (!this.isCurrentBackendSession(revision)) return
-            this.plan.version += 1
-            this.persist()
-          } catch (reason) {
-            console.warn('バックエンドでのタスク削除に失敗しましたが、画面上からは削除しました:', reason)
-            // 💡 通信エラー等でタスクを配列に戻さず（ロールバックせず）、消した状態を維持！
-          }
+        try {
+          await apiClient.deleteTask(taskId)
+          if (!this.isCurrentBackendSession(revision)) return
+          this.plan.version += 1
+          this.persist()
+        } catch (reason) {
+          const disposition = this.handleSessionApiError(
+            reason,
+            revision,
+            '削除に失敗したため、タスクを戻しました',
+          )
+          if (disposition !== 'handled') return
+          this.plan.tasks = previousTasks
+          this.persist()
         }
       }
     },
@@ -762,9 +846,24 @@ export const useQuestStore = defineStore('quest', {
     startClock(): void {
       if (clockTimer !== null) return
       this.clockTick = Date.now()
+      this.ensureDailyHabits()
       clockTimer = window.setInterval(() => {
         this.clockTick = Date.now()
+        this.ensureDailyHabits()
       }, 60_000)
+    },
+    ensureDailyHabits(localDate = currentLocalDate()): boolean {
+      // The backend does not yet expose habit templates. Avoid creating unsynced local tasks in API mode.
+      if (this.backendEnabled || this.plan.localDate === localDate) return false
+      this.plan = {
+        ...this.plan,
+        localDate,
+        version: this.plan.version + 1,
+        tasks: createDailyHabits(localDate),
+      }
+      this.processedBattles = {}
+      this.persist()
+      return true
     },
     clearToast(): void {
       this.toast = ''
@@ -821,7 +920,7 @@ export const useQuestStore = defineStore('quest', {
           } else if (status === 403) {
             this.toast = 'このデータを表示する権限がありません'
           } else {
-            console.warn('データの取得に失敗しました:', reason)
+            this.toast = 'データを同期できません。通信状態を確認してください'
           }
         }
         return
@@ -852,6 +951,7 @@ export const useQuestStore = defineStore('quest', {
           this.game = normalizeGameState(saved.game, this.game)
         }
       }
+      this.ensureDailyHabits()
     },
     persist(): void {
       const key = persistenceKey(this.backendEnabled)
