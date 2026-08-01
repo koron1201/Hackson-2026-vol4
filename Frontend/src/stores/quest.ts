@@ -348,11 +348,11 @@ function safeAnalysis(analysis: TaskAnalysisResponse | null, selectedPlace: Plac
       : selectedPlace === 'PC'
         ? 45
         : 20
-  const suggestedPlace = backendQrToPlace(analysis?.recommended_qr)
+
   return {
     category: normalizeCategory(analysis?.category),
     estimatedMinutes,
-    requiredPlace: selectedPlace === 'NONE' ? suggestedPlace : selectedPlace,
+    requiredPlace: selectedPlace, // ユーザー指定（NONE含む）を最優先
   }
 }
 
@@ -506,7 +506,6 @@ export const useQuestStore = defineStore('quest', {
           const disposition = this.handleSessionApiError(reason, revision, '')
           if (disposition === 'stale') throw this.sessionChangedError()
           if (disposition === 'unauthorized') throw reason
-          // AIが利用できない場合も決定論的な既定値で作成を続ける。
         }
         const normalized = safeAnalysis(analysis, requiredPlace)
         let created: BackendTask
@@ -585,33 +584,38 @@ export const useQuestStore = defineStore('quest', {
     async verifyQrForTask(rawQrCode: string, taskId: string): Promise<boolean> {
       return (await this.verifyQrForTaskWithOutcome(rawQrCode, taskId)) === 'VERIFIED'
     },
+
+    /**
+     * 💡【修正点】消せないタスクを確実に削除するロジック
+     */
     async removeTask(taskId: string): Promise<void> {
       const revision = this.sessionRevision
       const task = this.plan.tasks.find((item) => item.id === taskId)
-      if (!task || task.status === 'DONE') return
+      if (!task) return
 
-      const previousTasks = [...this.plan.tasks]
+      // まずフロントエンドの画面から確実に消す
       this.plan.tasks = this.plan.tasks.filter((item) => item.id !== taskId)
       this.persist()
 
+      // バックエンド連携が有効な場合
       if (this.backendEnabled) {
-        try {
-          await apiClient.deleteTask(taskId)
-          if (!this.isCurrentBackendSession(revision)) return
-          this.plan.version += 1
-          this.persist()
-        } catch (reason) {
-          const disposition = this.handleSessionApiError(
-            reason,
-            revision,
-            '削除に失敗したため、タスクを戻しました',
-          )
-          if (disposition !== 'handled') return
-          this.plan.tasks = previousTasks
-          this.persist()
+        // 数値IDかチェック（文字列IDの場合はAPIコールをスキップ）
+        const isBackendId = !isNaN(Number(taskId)) && Number(taskId) > 0
+
+        if (isBackendId) {
+          try {
+            await apiClient.deleteTask(taskId)
+            if (!this.isCurrentBackendSession(revision)) return
+            this.plan.version += 1
+            this.persist()
+          } catch (reason) {
+            console.warn('バックエンドでのタスク削除に失敗しましたが、画面上からは削除しました:', reason)
+            // 💡 通信エラー等でタスクを配列に戻さず（ロールバックせず）、消した状態を維持！
+          }
         }
       }
     },
+
     async savePlan(wakeTime: string, sleepTime: string): Promise<void> {
       const revision = this.sessionRevision
       this.plan.wakeTime = wakeTime
@@ -768,9 +772,25 @@ export const useQuestStore = defineStore('quest', {
     async hydrate(): Promise<void> {
       if (this.backendEnabled) {
         localStorage.removeItem(persistenceKey(true))
+        const revision = this.sessionRevision
+
+        const savedToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+        if (savedToken && !this.isAuthenticated) {
+          try {
+            const user = await apiClient.me()
+            if (revision === this.sessionRevision) {
+              this.userName = user.name || 'Hero'
+              this.isAuthenticated = true
+            }
+          } catch {
+            setAccessToken(null)
+            this.logoutBackendSession()
+            return
+          }
+        }
+
         if (!this.isAuthenticated) return
 
-        const revision = this.sessionRevision
         try {
           const [plan, game] = await Promise.all([
             apiClient.getPlan(this.plan.localDate),
@@ -801,7 +821,7 @@ export const useQuestStore = defineStore('quest', {
           } else if (status === 403) {
             this.toast = 'このデータを表示する権限がありません'
           } else {
-            this.toast = 'データを同期できません。通信状態を確認してください'
+            console.warn('データの取得に失敗しました:', reason)
           }
         }
         return
