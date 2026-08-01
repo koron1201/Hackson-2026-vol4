@@ -41,6 +41,13 @@ export function forecastDay(tasks: QuestTask[], minutesUntilSleep: number): Fore
   }
 }
 
+export function phaseFromHour(hour: number): 'morning' | 'daytime' | 'night' {
+  const normalizedHour = Number.isFinite(hour) ? ((Math.floor(hour) % 24) + 24) % 24 : 0
+  if (normalizedHour < 9) return 'morning'
+  if (normalizedHour >= 20) return 'night'
+  return 'daytime'
+}
+
 export function minutesUntilClock(clock: string, now = new Date()): number {
   const values = clock.split(':').map((value) => Number(value))
   const hours = values[0] ?? Number.NaN

@@ -38,6 +38,12 @@ export interface TaskAnalysisResponse {
   note?: string
 }
 
+export interface AuthenticatedUser {
+  id: number
+  name: string
+  email: string | null
+}
+
 interface ApiErrorBody {
   detail?: unknown
   error?: {
@@ -159,12 +165,13 @@ export function createApiClient(
   return {
     health: () => request<{ message: string }>('/'),
     login: (email: string, password: string) =>
-      request<{ accessToken: string; user: { id: number; name: string; email: string | null } }>(
+      request<{ accessToken: string; user: AuthenticatedUser }>(
         '/auth/login',
         { method: 'POST', body: JSON.stringify({ email, password }) },
       ),
+    me: () => request<AuthenticatedUser>('/auth/me'),
     register: (name: string, email: string, password: string) =>
-      request<{ accessToken: string; user: { id: number; name: string; email: string | null } }>(
+      request<{ accessToken: string; user: AuthenticatedUser }>(
         '/auth/register',
         { method: 'POST', body: JSON.stringify({ name, email, password }) },
       ),
