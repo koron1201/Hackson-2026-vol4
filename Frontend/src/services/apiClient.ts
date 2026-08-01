@@ -65,7 +65,8 @@ export class ApiError extends Error {
   }
 }
 
-let accessToken: string | null = null
+// 💡 【修正点1】初期化時に localStorage から保存済みトークンを読み込む
+let accessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
 
 function normalizeBaseUrl(value: string | undefined): string | null {
   const candidate = value?.trim()
@@ -237,7 +238,14 @@ export function createApiClient(
 export const isBackendConfigured = Boolean(import.meta.env.VITE_API_BASE_URL?.trim())
 export const apiClient = createApiClient(import.meta.env.VITE_API_BASE_URL)
 
+// 💡 【修正点2】トークンセット時に localStorage へ保存＆破棄を行う
 export function setAccessToken(token: string | null): void {
-  // Keep the short-lived access token in memory; do not persist it in localStorage.
   accessToken = token
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem('access_token', token)
+    } else {
+      localStorage.removeItem('access_token')
+    }
+  }
 }

@@ -65,8 +65,20 @@ export function createAppRouter(
   })
 
   let stopAuthSync: (() => void) | null = null
-  router.beforeEach((to) => {
+
+  router.beforeEach(async (to) => {
     const store = useQuestStore()
+
+    // 💡【最重要ポイント】トークンが存在し、かつ未認証状態なら先に hydrate()（自動ログイン）を完了させる
+    const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('access_token'))
+    if (hasToken && !store.isAuthenticated) {
+      try {
+        await store.hydrate()
+      } catch (e) {
+        console.warn('自動ログインの復元に失敗しました:', e)
+      }
+    }
+
     if (!stopAuthSync) {
       stopAuthSync = store.$subscribe(
         (_mutation, state) => {
@@ -82,7 +94,16 @@ export function createAppRouter(
         { flush: 'sync' },
       )
     }
-    if (!to.meta.public && !store.isAuthenticated) return '/login'
+
+    // 認証チェック：未ログインで保護されたページへ行こうとした場合のみ /login へリダイレクト
+    if (!to.meta.public && !store.isAuthenticated) {
+      return '/login'
+    }
+
+    // 既にログイン済みで /login にアクセスした場合は /home へリダイレクト
+    if (to.path === '/login' && store.isAuthenticated) {
+      return '/home'
+    }
   })
 
   return router
