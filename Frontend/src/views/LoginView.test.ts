@@ -147,7 +147,7 @@ describe('LoginView', () => {
     await wrapper.get('input[type="email"]').setValue('you@example.com')
     await wrapper.get('input[type="password"]').setValue('password123')
     await wrapper.get('form').trigger('submit')
-    const guestButton = wrapper.get('[data-testid="guest-login"]')
+    const guestButton = wrapper.get('[data-testid="demo-login"]')
 
     expect(guestButton.attributes('disabled')).toBeDefined()
     await guestButton.trigger('click')
@@ -175,18 +175,18 @@ describe('LoginView', () => {
     expect(replace).not.toHaveBeenCalled()
   })
 
-  it('入力なしのゲスト導線でローカルデモへ進む', async () => {
+  it('バックエンドモードでも認証情報なしでローカルデモへ入れる', async () => {
     const store = useQuestStore()
     store.backendEnabled = true
     store.isAuthenticated = false
     const wrapper = mount(LoginView)
 
-    await wrapper.get('[data-testid="guest-login"]').trigger('click')
+    await wrapper.get('[data-testid="demo-login"]').trigger('click')
 
-    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith('/home'))
     expect(login).not.toHaveBeenCalled()
     expect(setAccessToken).toHaveBeenCalledWith(null)
     expect(store.backendEnabled).toBe(false)
-    expect(store.tasks.length).toBeGreaterThan(0)
+    expect(store.isAuthenticated).toBe(true)
+    expect(replace).toHaveBeenCalledWith('/home')
   })
 })

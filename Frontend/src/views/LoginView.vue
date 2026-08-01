@@ -85,7 +85,7 @@ function useDemo() {
           <button
             class="button button--outline button--wide"
             type="button"
-            data-testid="guest-login"
+            data-testid="demo-login"
             :disabled="submitting"
             @click="useDemo"
           >
@@ -97,7 +97,7 @@ function useDemo() {
         <p class="eyebrow">LOCAL DEMO</p>
         <h2>デモを始める</h2>
         <p>バックエンドへ送信せず、この端末内だけで主要画面を確認します。</p>
-        <button class="button button--outline button--wide" type="button" data-testid="guest-login" @click="useDemo">
+        <button class="button button--outline button--wide" type="button" data-testid="demo-login" @click="useDemo">
           デモモードで始める
         </button>
         <p class="auth-note">入力した認証情報を保存・送信しません。</p>
