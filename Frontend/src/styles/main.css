@@ -1861,6 +1861,10 @@ dd {
   background: #fff;
 }
 
+.app-frame--night .button--light {
+  color: #0d2639;
+}
+
 .text-button--light {
   color: #fff;
 }

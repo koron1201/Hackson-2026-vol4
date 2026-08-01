@@ -757,6 +757,7 @@ export const useQuestStore = defineStore('quest', {
     },
     startClock(): void {
       if (clockTimer !== null) return
+      this.clockTick = Date.now()
       clockTimer = window.setInterval(() => {
         this.clockTick = Date.now()
       }, 60_000)
